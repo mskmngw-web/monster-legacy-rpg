@@ -229,6 +229,14 @@ function deep(o){return JSON.parse(JSON.stringify(o))}
 function natureKey(){return pick(Object.keys(NATURES))}
 function traitName(k){return TRAITS[k]?.name||k}
 function skillName(k){return SKILLS[k]?.name||k}
+function bloodlineTitle(p){
+  p=p||0;
+  if(p>=10)return "極血統";
+  if(p>=6)return "名血";
+  if(p>=3)return "良血";
+  if(p>=1)return "継承";
+  return "初代";
+}
 
 function newMonster(species, level=1, overrides={}){
   const def=MONSTERS[species];
@@ -297,7 +305,15 @@ function save(){
 function load(){
   const x=localStorage.getItem("monster_legacy_rpg_save");
   if(!x)return false;
-  try{game=JSON.parse(x);return true}catch(e){return false}
+  try{
+    game=JSON.parse(x);
+    game.monsters=(game.monsters||[]).map(m=>{
+      if(typeof m.plus!=="number")m.plus=0;
+      if(!m.breedPts)m.breedPts={hp:0,atk:0,def:0,mag:0,spd:0};
+      return m;
+    });
+    return true;
+  }catch(e){return false}
 }
 function erase(){
   localStorage.removeItem("monster_legacy_rpg_save");
@@ -347,7 +363,7 @@ function starterCard(id,desc){
   return `<div class="card"><h3>${d.name}</h3><div class="small">${FAMILIES[d.family]} / ${d.rank}ランク</div><p>${desc}</p><button class="primary" onclick="startGame('${id}')">この魔物で始める</button></div>`;
 }
 function renderHeader(){
-  return `<header><div><div class="logo">魔物継承記</div><div class="small">${game.name} / 魔王軍撃破 ${game.bossesDefeated}/5</div></div>
+  return `<header><div><div class="logo">魔物継承記 <span class="small">v0.3.1</span></div><div class="small">${game.name} / 魔王軍撃破 ${game.bossesDefeated}/5</div></div>
   <div class="small">G ${game.gold}　薬 ${game.potions}　餌 ${game.scoutBait}</div></header>`;
 }
 function renderNav(){
@@ -392,7 +408,7 @@ function monsterCard(m,active=false){
   return `<div class="card ${active?"active":""}">
     <div class="statline"><b>${displayMonster(m)}</b><span>${FAMILIES[d.family]}</span></div>
     <div class="small">性格：${n.name}　特性：${m.traits.map(traitName).join("・")}　配合P ${totalBreedPts(m)}/10</div>
-    <div class="small notice">血統 +${m.plus||0} / 全能力 +${(m.plus||0)*2}%</div>
+    <div class="small notice">【${bloodlineTitle(m.plus)}】血統 +${m.plus||0} / 全能力 +${(m.plus||0)*2}%</div>
     <div class="statline"><span>HP ${m.hp}/${s.hp}</span><span>MP ${m.mp}/${s.mp}</span></div>
     <div class="bar"><i style="width:${100*m.hp/s.hp}%"></i></div>
     <div class="small">攻 ${s.atk} / 防 ${s.def} / 魔 ${s.mag} / 速 ${s.spd}</div>
@@ -404,8 +420,9 @@ function renderExplore(){
   const trainLv=lead?lead.level:1;
   return `<div class="panel">
     <h2>育成訓練場</h2>
-    <p class="small">配合直後のLv.1育成用。先頭モンスターのレベルに合わせて敵が出現します。</p>
+    <p class="small">配合直後のLv.1育成用。先頭モンスター以下のLvを中心に、低Lvでは安全な訓練相手が出現します。</p>
     <p>現在の基準Lv：<b>${trainLv}</b>　経験値：<b>1.8倍</b>　獲得G：半分</p>
+    <p class="good">訓練場では全滅してもゴールドを失いません。スカウトはできません。</p>
     <button class="primary" onclick="trainExplore()">訓練する</button>
   </div>
   <div class="panel"><h2>探索地</h2><div class="grid">
@@ -440,10 +457,20 @@ function explore(zoneId){
 function trainExplore(){
   if(!canBattle()){alert("戦える仲間がいません。宿で回復してください。");return}
   const lead=getLeadAlive();
-  const pool=["slime","wolf","sparrow","fish","sprout"];
-  const lv=clamp(lead.level+rint(-1,1),1,10);
+
+  // Lv1〜3は事故を避けるため、比較的戦いやすい訓練相手だけ出す。
+  const pool=lead.level<=3
+    ? ["slime","sparrow","sprout"]
+    : ["slime","wolf","sparrow","fish","sprout"];
+
+  const lv=clamp(lead.level-1+rint(0,1),1,10);
   const zone={id:"training",name:"育成訓練場"};
-  startBattle(newMonster(pick(pool),lv),false,zone,{training:true,expMult:1.8,goldMult:0.5});
+  startBattle(newMonster(pick(pool),lv),false,zone,{
+    training:true,
+    expMult:1.8,
+    goldMult:0.5,
+    enemyDamageMult:0.70
+  });
 }
 function challengeBoss(zoneId){
   if(!canBattle())return alert("戦える仲間がいません。");
@@ -457,6 +484,7 @@ function startBattle(enemy,isBoss,zone,options={}){
     training:!!options.training,
     expMult:options.expMult||1,
     goldMult:options.goldMult||1,
+    enemyDamageMult:options.enemyDamageMult||1,
     log:[`${options.training?"訓練相手":isBoss?"強敵":"野生"}の ${displayMonster(enemy)} が現れた！`],
     locked:false
   };
@@ -502,7 +530,7 @@ function renderBattleActions(me){
     ${me.skills.map((sk,i)=>`<button onclick="playerSkill(${i})" ${me.mp<SKILLS[sk].mp?"disabled":""}>${skillName(sk)} ${SKILLS[sk].mp}MP</button>`).join("")}
     <button onclick="openSwitch()">いれかえ</button>
     <button onclick="usePotion()" ${game.potions<=0?"disabled":""}>薬草 (${game.potions})</button>
-    ${battle.isBoss?"":`<button class="warn" onclick="scout(false)">スカウト</button><button onclick="scout(true)" ${game.scoutBait<=0?"disabled":""}>好物+スカウト (${game.scoutBait})</button><button onclick="flee()">にげる</button>`}
+    ${battle.isBoss?"":battle.training?`<span class="small">訓練相手はスカウトできません。</span><button onclick="flee()">訓練をやめる</button>`:`<button class="warn" onclick="scout(false)">スカウト ${Math.round(scoutChance(false)*100)}%</button><button onclick="scout(true)" ${game.scoutBait<=0?"disabled":""}>好物+スカウト ${Math.round(scoutChance(true)*100)}% (${game.scoutBait})</button><button onclick="flee()">にげる</button>`}
   </div>
   <div id="switchPanel"></div>`;
 }
@@ -588,45 +616,59 @@ function elemMultiplier(element,target){
   if(element==="none")return 1;
   const targetSkills=MONSTERS[target.species].skills.map(k=>SKILLS[k]?.element);
   let targetElem=targetSkills.find(x=>x&&x!=="none")||"none";
-  if(ELEMENT_ADV[element]===targetElem)return 1.5;
-  if(ELEMENT_ADV[targetElem]===element)return .5;
+  if(ELEMENT_ADV[element]===targetElem)return 1.35;
+  if(ELEMENT_ADV[targetElem]===element)return .75;
   return 1;
 }
 function dealDamage(actor,target,sk){
   const a=effectiveStats(actor),t=effectiveStats(target);
   const atk=sk.type==="magic"?a.mag:a.atk;
   const def=sk.type==="magic"?t.mag:t.def;
-  let dmg=(sk.power+atk*.55-def*.28)*(0.9+Math.random()*.2);
+
+  // Ver.0.3: 通常戦を概ね3〜5ターンにするため基礎ダメージを抑制
+  let dmg=(sk.power+atk*.55-def*.28)*0.26*(0.9+Math.random()*.2);
   let mult=elemMultiplier(sk.element,target);
-  if(actor.traits.includes("hunt")&&target.hp<calcStats(target).hp*.5)mult*=1.25;
-  if(actor.traits.includes("brave")&&actor.hp<calcStats(actor).hp*.35)mult*=1.2;
-  if(actor.traits.includes("noct")&&sk.element==="dark")mult*=1.2;
-  if(target.traits.includes("fireguard")&&sk.element==="fire")mult*=.7;
-  if(target.traits.includes("iron")&&sk.type==="physical")mult*=.9;
+
+  if(actor.traits.includes("hunt")&&target.hp<calcStats(target).hp*.5)mult*=1.20;
+  if(actor.traits.includes("brave")&&actor.hp<calcStats(actor).hp*.35)mult*=1.18;
+  if(actor.traits.includes("noct")&&sk.element==="dark")mult*=1.15;
+  if(target.traits.includes("fireguard")&&sk.element==="fire")mult*=.75;
+  if(target.traits.includes("iron")&&sk.type==="physical")mult*=.90;
+
+  if(battle && actor===battle.enemy)mult*=battle.enemyDamageMult||1;
+
   dmg=Math.max(1,Math.round(dmg*mult));
   target.hp=Math.max(0,target.hp-dmg);
-  let note=mult>=1.45?" 弱点！":mult<=.55?" 耐性！":"";
+
+  let note=mult>=1.30?" 弱点！":mult<=.78?" 耐性！":"";
   battleLog(`${MONSTERS[actor.species].name}の${sk.name}！ ${dmg}ダメージ。${note}`);
 }
 function endTurnEffects(m){
   if(m.hp<=0)return;
   const s=calcStats(m);
   if(m.status==="poison"){
-    const dmg=Math.max(1,Math.floor(s.hp*.1));m.hp=Math.max(0,m.hp-dmg);battleLog(`${MONSTERS[m.species].name}は毒で${dmg}ダメージ。`);
+    const dmg=Math.max(1,Math.floor(s.hp*.08));m.hp=Math.max(0,m.hp-dmg);battleLog(`${MONSTERS[m.species].name}は毒で${dmg}ダメージ。`);
   }
   if(m.traits.includes("regen")&&m.hp>0){const h=Math.max(1,Math.floor(s.hp*.05));m.hp=Math.min(s.hp,m.hp+h)}
   if(m.traits.includes("mana")){const h=Math.max(1,Math.floor(s.mp*.05));m.mp=Math.min(s.mp,m.mp+h)}
 }
 function tickBuffs(m){for(const k of Object.keys(m.buffTurns||{})) if(m.buffTurns[k]>0)m.buffTurns[k]--}
 
-function scout(withBait){
-  if(!battle||battle.isBoss)return;
+function scoutChance(withBait=false){
+  if(!battle||battle.isBoss||battle.training)return 0;
   const en=battle.enemy,es=calcStats(en),me=battleLead();
-  let chance=.12 +(1-en.hp/es.hp)*.52 + Math.max(-.15,(me.level-en.level)*.015);
-  if(en.status)chance+=.08;
+  let chance=.10 +(1-en.hp/es.hp)*.65 + Math.max(-.12,(me.level-en.level)*.012);
+  if(en.status)chance+=.12;
   if(me.traits.includes("scout"))chance+=.08;
-  if(withBait){game.scoutBait--;chance+=.18}
-  chance=clamp(chance,.05,.9);
+  if(withBait)chance+=.20;
+  return clamp(chance,.05,.90);
+}
+
+function scout(withBait){
+  if(!battle||battle.isBoss||battle.training)return;
+  const en=battle.enemy,es=calcStats(en),me=battleLead();
+  let chance=scoutChance(withBait);
+  if(withBait)game.scoutBait--;
   const pct=Math.round(chance*100);
   if(Math.random()<chance){
     en.hp=calcStats(en).hp;en.mp=calcStats(en).mp;
@@ -675,7 +717,22 @@ function winBattle(){
   battle=null;save();currentView="home";render();
 }
 function loseBattle(){
-  game.gold=Math.floor(game.gold*.8);fullHeal();addLog("全滅した……。所持金の20%を失い、王都へ戻された。");battle=null;save();currentView="home";render();
+  if(battle?.training){
+    fullHeal();
+    addLog("訓練で全滅したが、教官に救助された。ペナルティなしで全員回復した。");
+    battle=null;
+    save();
+    currentView="explore";
+    render();
+    return;
+  }
+  game.gold=Math.floor(game.gold*.8);
+  fullHeal();
+  addLog("全滅した……。所持金の20%を失い、王都へ戻された。");
+  battle=null;
+  save();
+  currentView="home";
+  render();
 }
 
 function renderParty(){
@@ -687,7 +744,7 @@ function monsterDetail(m,inParty,index=-1){
   return `<div class="card">
     <div class="statline"><b>${displayMonster(m)}</b><span>${FAMILIES[d.family]}</span></div>
     <div class="small">性格 ${n.name} / 特性 ${m.traits.map(traitName).join("・")}</div>
-    <div class="notice">血統 +${m.plus||0}　全能力 +${(m.plus||0)*2}%</div>
+    <div class="notice">【${bloodlineTitle(m.plus)}】血統 +${m.plus||0}　全能力 +${(m.plus||0)*2}%</div>
     <div class="kv"><span>能力</span><span>HP ${s.hp} / MP ${s.mp} / 攻 ${s.atk} / 防 ${s.def} / 魔 ${s.mag} / 速 ${s.spd}</span>
     <span>スキル</span><span>${m.skills.map(skillName).join("・")}</span>
     <span>配合P</span><span>${Object.entries(m.breedPts).filter(x=>x[1]).map(([k,v])=>`${statJP(k)}+${v}`).join(" / ")||"なし"}</span></div>
@@ -719,11 +776,17 @@ function strongerFamilySpecies(family,a,b){
 }
 function rankNum(r){return ({F:1,E:2,D:3,C:4,B:5,A:6,S:7})[r]||1}
 function inheritedPoints(a,b){return Math.min(10,Math.min(5,Math.floor(a.level/10))+Math.min(5,Math.floor(b.level/10)))}
+function breedGrowthBonus(a,b){
+  const minLv=Math.min(a.level,b.level);
+  if(minLv>=40)return 4;
+  if(minLv>=30)return 3;
+  if(minLv>=20)return 2;
+  if(minLv>=10)return 1;
+  return 0;
+}
 function childPlus(a,b){
   const parent=Math.max(a.plus||0,b.plus||0);
-  const minLv=Math.min(a.level,b.level);
-  const bonus=minLv>=40?3:minLv>=30?2:minLv>=20?1:0;
-  return Math.min(10,parent+1+bonus);
+  return Math.min(10,parent+breedGrowthBonus(a,b));
 }
 
 function renderBreed(){
@@ -732,18 +795,26 @@ function renderBreed(){
   const a=byUid(breedDraft.a),b=byUid(breedDraft.b);
   let preview="";
   if(a&&b&&a.uid!==b.uid){
-    const r=breedResult(a,b),d=MONSTERS[r.species],pts=inheritedPoints(a,b),plus=childPlus(a,b);
+    const r=breedResult(a,b),d=MONSTERS[r.species],pts=inheritedPoints(a,b),plus=childPlus(a,b),growth=breedGrowthBonus(a,b);
     preview=`<div class="panel"><h3>配合結果</h3>
       <p><b>${displayMonster(a)}</b> × <b>${displayMonster(b)}</b></p>
-      <p>→ <b>${d.name} +${plus}</b> ${r.special?"<span class='notice'>【特殊配合】</span>":""}</p>
+      <p>→ <b>${d.name} +${plus}</b> <span class="notice">【${bloodlineTitle(plus)}】</span> ${r.special?"<span class='notice'>【特殊配合】</span>":""}</p>
       <div class="small">${FAMILIES[d.family]} / ${d.rank}ランク / Lv.1で誕生</div>
-      <p class="notice"><b>血統強化：全能力 +${plus*2}%</b></p>
+      <p class="notice"><b>血統：+${Math.max(a.plus||0,b.plus||0)} → +${plus}　全能力 +${plus*2}%</b></p>
+      <p>今回の育成ボーナス：<b>+${growth}</b>（両親の低い方のLvで決定）</p>
+      <p class="small">Lv10:+1 / Lv20:+2 / Lv30:+3 / Lv40:+4。Lv9以下では+値は増えません。</p>
       <p>獲得できる継承ポイント：<b>${pts}pt</b></p>
       <p class="small">配合すると親2体はいなくなります。子は親のスキル・特性候補を一部継承します。</p>
       <button class="primary" onclick="prepareBreed()">継承ポイントを振り分ける</button>
     </div>`;
   }
-  return `<div class="panel"><h2>継承の儀</h2>
+  const success=game.lastBreedResult?`<div class="panel center">
+    <div class="notice"><b>★ 配合成功 ★</b></div>
+    <h2>【${game.lastBreedResult.title}】${MONSTERS[game.lastBreedResult.species].name} +${game.lastBreedResult.plus}</h2>
+    <p><b>全能力 +${game.lastBreedResult.plus*2}%</b>　/　配合P ${game.lastBreedResult.points}</p>
+    <button onclick="clearBreedResult()">確認</button>
+  </div>`:"";
+  return `${success}<div class="panel"><h2>継承の儀</h2>
     <p class="small">育てた2体を配合し、新しいLv.1の魔物を誕生させます。親は配合後にいなくなります。</p>
     <label>親A</label><select onchange="breedSelect('a',this.value)" style="width:100%;padding:10px;margin:5px 0 10px;background:#101621;color:white">
       <option value="">選択</option>${mons.map(m=>`<option value="${m.uid}" ${breedDraft.a===m.uid?"selected":""}>${displayMonster(m)}</option>`).join("")}
@@ -753,6 +824,11 @@ function renderBreed(){
     </select>
     ${a&&b&&a.uid===b.uid?"<p class='bad'>同じ個体は選べません。</p>":""}
   </div>${preview}${breedDraft.child?renderBreedAllocation():""}`;
+}
+function clearBreedResult(){
+  game.lastBreedResult=null;
+  save();
+  render();
 }
 function breedSelect(k,v){breedDraft[k]=v||null;breedDraft.child=null;render()}
 function prepareBreed(){
@@ -786,7 +862,13 @@ function confirmBreed(){
   game.monsters=game.monsters.filter(m=>m.uid!==a.uid&&m.uid!==b.uid);
   game.monsters.push(child);
   if(game.party.length<3)game.party.push(child.uid);
-  addLog(`配合成功！ ${MONSTERS[child.species].name} +${child.plus} が誕生。全能力 +${child.plus*2}%！`);
+  game.lastBreedResult={
+    species:child.species,
+    plus:child.plus,
+    points:totalBreedPts(child),
+    title:bloodlineTitle(child.plus)
+  };
+  addLog(`配合成功！【${bloodlineTitle(child.plus)}】${MONSTERS[child.species].name} +${child.plus} が誕生。全能力 +${child.plus*2}%！`);
   breedDraft={a:null,b:null,child:null,points:0,alloc:{hp:0,atk:0,def:0,mag:0,spd:0}};
   save();render();
 }
@@ -812,7 +894,7 @@ window.startGame=startGame;window.nav=nav;window.rest=rest;window.buyPotion=buyP
 window.explore=explore;window.trainExplore=trainExplore;window.challengeBoss=challengeBoss;window.playerAction=playerAction;window.playerSkill=playerSkill;
 window.openSwitch=openSwitch;window.switchAction=switchAction;window.forceSwitch=forceSwitch;window.usePotion=usePotion;
 window.scout=scout;window.flee=flee;window.toRanch=toRanch;window.toParty=toParty;window.moveParty=moveParty;
-window.breedSelect=breedSelect;window.prepareBreed=prepareBreed;window.allocBreed=allocBreed;window.confirmBreed=confirmBreed;
+window.breedSelect=breedSelect;window.prepareBreed=prepareBreed;window.allocBreed=allocBreed;window.confirmBreed=confirmBreed;window.clearBreedResult=clearBreedResult;
 window.save=save;window.erase=erase;window.exportSave=exportSave;window.importSave=importSave;
 
 load()||(game=defaultGame());
