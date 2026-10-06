@@ -77,6 +77,14 @@ input[type=range]{width:100%}
 .center{text-align:center}
 .battleVS{text-align:center;color:var(--gold);font-weight:900;margin:8px}
 code{color:#cde6ff}
+.storybox{border:1px solid #566580;background:linear-gradient(180deg,#202a3b,#171e2b);border-radius:14px;padding:18px;margin:12px 0;box-shadow:0 10px 28px rgba(0,0,0,.24)}
+.storybox h2{margin:0 0 6px;color:var(--gold)}
+.story-chapter{font-size:.82rem;color:#aeb8cb;letter-spacing:.08em;margin-bottom:14px}
+.story-speaker{font-weight:900;color:#a8e68e;margin-bottom:7px}
+.story-text{font-size:1.02rem;line-height:1.85;white-space:pre-wrap}
+.story-progress{font-size:.78rem;color:var(--muted);text-align:right;margin-top:10px}
+.story-list{display:grid;gap:7px}
+.story-list button{text-align:left}
 </style>
 
 <meta name="theme-color" content="#131722">
@@ -120,11 +128,22 @@ const SKILLS = {
   dark:{name:"闇の牙",type:"physical",power:45,mp:6,element:"dark"},
   light:{name:"光弾",type:"magic",power:45,mp:6,element:"light"},
   heal:{name:"癒やし",type:"heal",power:34,mp:6,element:"light"},
-  poison:{name:"毒の粉",type:"status",status:"poison",chance:.7,mp:5,element:"none"},
-  sleep:{name:"眠りの胞子",type:"status",status:"sleep",chance:.55,mp:6,element:"none"},
-  stun:{name:"しびれ針",type:"status",status:"paralyze",chance:.55,mp:6,element:"none"},
-  roar:{name:"雄叫び",type:"buff",stat:"atk",amount:.25,turns:3,mp:5,element:"none"}
+  poison:{name:"毒の粉",type:"status",status:"poison",chance:.75,mp:5,element:"none"},
+  sleep:{name:"眠りの胞子",type:"status",status:"sleep",chance:.60,mp:6,element:"none"},
+  stun:{name:"しびれ針",type:"status",status:"paralyze",chance:.60,mp:6,element:"none"},
+  roar:{name:"雄叫び",type:"buff",stat:"atk",amount:.25,turns:3,mp:5,element:"none"},
+  // ボス専用技（敵専用・MP0。習得リストには含めない）
+  b_imp:{name:"業火の呪詛",type:"magic",power:52,mp:0,element:"dark",inflict:{status:"poison",chance:.5}},
+  b_garg:{name:"石化の咆哮",type:"physical",power:55,mp:0,element:"earth",inflict:{status:"paralyze",chance:.4}},
+  b_wyv:{name:"暴風の翼",type:"physical",power:58,mp:0,element:"wind"},
+  b_lich:{name:"死霊の吸魂",type:"magic",power:55,mp:0,element:"dark",drain:.5},
+  b_kraken:{name:"深海の触手",type:"physical",power:60,mp:0,element:"water",inflict:{status:"sleep",chance:.35}},
+  b_eagle:{name:"雷鳴の急降下",type:"physical",power:64,mp:0,element:"wind",inflict:{status:"paralyze",chance:.3}},
+  b_drag:{name:"古竜のブレス",type:"magic",power:70,mp:0,element:"fire"},
+  b_lord:{name:"魔王の闇波",type:"magic",power:74,mp:0,element:"dark",drain:.3,inflict:{status:"sleep",chance:.3}}
 };
+const BOSS_MOVES={imp:"b_imp",gargoyle:"b_garg",wyvern:"b_wyv",lich:"b_lich",abyssKraken:"b_kraken",stormEagle:"b_eagle",ancientDragon:"b_drag",darkLord:"b_lord"};
+const BOSS_PHASE_TEXT={imp:"瘴気をまとい、動きが荒くなった！",gargoyle:"石の体にひびが走り、凶暴化した！",wyvern:"翼を大きく広げ、嵐を呼んだ！",lich:"魂の力を解き放った！",abyssKraken:"黒い霧が渦を巻き、触手が暴れ出した！",stormEagle:"雷光をまとい、全身が輝き出した！",ancientDragon:"古の力が目覚め、咆哮が天を裂いた！",darkLord:"魔王ヴァルガスは真の力を解き放った！"};
 
 const TRAITS = {
   quick:{name:"俊足",desc:"戦闘開始3ターン、素早さ+20%"},
@@ -152,38 +171,11 @@ const NATURES = {
   honest:{name:"素直",up:null,down:null}
 };
 
-const MONSTERS = {
-  slime:{name:"ぷるスライム",family:"slime",base:{hp:58,mp:35,atk:42,def:48,mag:46,spd:42},skills:["bash","heal"],traits:["regen"],rank:"F"},
-  aquaSlime:{name:"アクアスライム",family:"slime",base:{hp:62,mp:48,atk:40,def:50,mag:63,spd:45},skills:["water","heal"],traits:["mana"],rank:"E"},
-  kingSlime:{name:"キングジェル",family:"slime",base:{hp:90,mp:58,atk:60,def:72,mag:70,spd:35},skills:["bash","heal","water"],traits:["regen","mana"],rank:"C"},
-  wolf:{name:"グレイウルフ",family:"beast",base:{hp:55,mp:24,atk:74,def:43,mag:28,spd:82},skills:["bite","roar"],traits:["quick","hunt"],rank:"F"},
-  flameHound:{name:"フレイムハウンド",family:"beast",base:{hp:68,mp:40,atk:84,def:52,mag:50,spd:76},skills:["bite","fire"],traits:["hunt","fireguard"],rank:"D"},
-  moonWolf:{name:"ムーンフェンリル",family:"beast",base:{hp:82,mp:62,atk:98,def:66,mag:74,spd:105},skills:["bite","dark","roar"],traits:["quick","noct"],rank:"B"},
-  hatchling:{name:"チビドラゴン",family:"dragon",base:{hp:66,mp:30,atk:62,def:58,mag:42,spd:38},skills:["bite","fire"],traits:["brave"],rank:"F"},
-  wyvern:{name:"ストームワイバーン",family:"dragon",base:{hp:78,mp:52,atk:82,def:62,mag:66,spd:86},skills:["wind","bite"],traits:["quick"],rank:"C"},
-  ancientDragon:{name:"古竜アルカディア",family:"dragon",base:{hp:118,mp:86,atk:112,def:98,mag:106,spd:72},skills:["fire","earth","roar"],traits:["brave","fireguard"],rank:"A"},
-  sparrow:{name:"ブレードバード",family:"bird",base:{hp:48,mp:34,atk:58,def:36,mag:45,spd:88},skills:["wind","bash"],traits:["quick"],rank:"F"},
-  raven:{name:"ナイトレイヴン",family:"bird",base:{hp:64,mp:55,atk:67,def:45,mag:72,spd:94},skills:["dark","wind"],traits:["noct"],rank:"D"},
-  sprout:{name:"マンドラスプラウト",family:"plant",base:{hp:66,mp:48,atk:40,def:55,mag:62,spd:30},skills:["poison","heal"],traits:["root","regen"],rank:"E"},
-  elderTree:{name:"エルダートレント",family:"plant",base:{hp:104,mp:68,atk:62,def:92,mag:84,spd:25},skills:["earth","heal","sleep"],traits:["root","regen"],rank:"B"},
-  imp:{name:"コボルトデーモン",family:"demon",base:{hp:54,mp:52,atk:52,def:40,mag:70,spd:55},skills:["fire","dark"],traits:["mana"],rank:"E"},
-  gargoyle:{name:"ガーゴイル",family:"demon",base:{hp:80,mp:58,atk:78,def:80,mag:72,spd:58},skills:["dark","earth"],traits:["iron","noct"],rank:"C"},
-  darkLord:{name:"魔王ヴァルガス",family:"demon",base:{hp:150,mp:120,atk:125,def:110,mag:135,spd:90},skills:["dark","fire","heal","roar"],traits:["brave","mana","noct"],rank:"S"},
-  golem:{name:"ロックゴーレム",family:"material",base:{hp:92,mp:18,atk:78,def:100,mag:18,spd:18},skills:["earth","bash"],traits:["iron"],rank:"D"},
-  armor:{name:"リビングアーマー",family:"material",base:{hp:84,mp:35,atk:88,def:102,mag:34,spd:35},skills:["bash","earth"],traits:["iron"],rank:"C"},
-  skull:{name:"スカルナイト",family:"undead",base:{hp:70,mp:40,atk:75,def:58,mag:48,spd:54},skills:["dark","bash"],traits:["noct"],rank:"D"},
-  lich:{name:"リッチメイジ",family:"undead",base:{hp:72,mp:92,atk:40,def:55,mag:108,spd:63},skills:["dark","fire","sleep"],traits:["mana","noct"],rank:"B"},
-  fish:{name:"リバーフィン",family:"aquatic",base:{hp:60,mp:38,atk:55,def:50,mag:48,spd:62},skills:["water","bash"],traits:["scout"],rank:"F"},
-  leviathan:{name:"リヴァイアサン",family:"aquatic",base:{hp:115,mp:85,atk:95,def:92,mag:105,spd:66},skills:["water","wind","roar"],traits:["regen","mana"],rank:"A"},
-  hellHound:{name:"ヘルハウンド",family:"beast",base:{hp:78,mp:50,atk:96,def:61,mag:62,spd:88},skills:["fire","bite","dark"],traits:["hunt","fireguard"],rank:"C"},
-  dragonWolf:{name:"ドラゴンウルフ",family:"beast",base:{hp:86,mp:42,atk:102,def:70,mag:52,spd:85},skills:["bite","fire","roar"],traits:["hunt","brave"],rank:"B"},
-  armorSlime:{name:"アーマージェル",family:"slime",base:{hp:82,mp:36,atk:58,def:98,mag:45,spd:28},skills:["bash","earth"],traits:["iron","regen"],rank:"C"},
-  worldBeast:{name:"星喰らいの獣",family:"beast",base:{hp:132,mp:92,atk:128,def:95,mag:102,spd:118},skills:["dark","wind","bite","roar"],traits:["quick","hunt","brave"],rank:"S"}
-};
+const MONSTERS = {"slime":{"name":"ぷるスライム","family":"slime","rank":"F","element":"none","base":{"hp":58,"mp":35,"atk":42,"mag":46,"spd":42,"def":48},"traits":["regen"],"learnset":[{"lv":1,"skill":"bash"},{"lv":4,"skill":"heal"},{"lv":14,"skill":"water"}]},"aquaSlime":{"name":"アクアスライム","family":"slime","rank":"E","element":"water","base":{"hp":62,"mp":48,"atk":40,"mag":63,"spd":45,"def":50},"traits":["mana"],"learnset":[{"lv":1,"skill":"water"},{"lv":5,"skill":"heal"},{"lv":16,"skill":"bash"}]},"kingSlime":{"name":"キングジェル","family":"slime","rank":"C","element":"water","base":{"hp":90,"mp":58,"atk":60,"mag":70,"spd":35,"def":72},"traits":["regen","mana"],"learnset":[{"lv":1,"skill":"bash"},{"lv":5,"skill":"heal"},{"lv":12,"skill":"water"},{"lv":24,"skill":"roar"}]},"armorSlime":{"name":"アーマージェル","family":"slime","rank":"C","element":"earth","base":{"hp":82,"mp":36,"atk":58,"mag":45,"spd":28,"def":98},"traits":["iron","regen"],"learnset":[{"lv":1,"skill":"bash"},{"lv":8,"skill":"earth"},{"lv":20,"skill":"heal"}]},"emberSlime":{"name":"エンバースライム","family":"slime","rank":"E","element":"fire","base":{"hp":60,"mp":46,"atk":43,"mag":65,"spd":48,"def":46},"traits":["fireguard"],"learnset":[{"lv":1,"skill":"fire"},{"lv":6,"skill":"bash"},{"lv":18,"skill":"heal"}]},"breezeSlime":{"name":"ブリーズスライム","family":"slime","rank":"D","element":"wind","base":{"hp":64,"mp":55,"atk":44,"mag":72,"spd":70,"def":48},"traits":["quick","mana"],"learnset":[{"lv":1,"skill":"wind"},{"lv":7,"skill":"heal"},{"lv":18,"skill":"bash"}]},"holySlime":{"name":"セイントジェル","family":"slime","rank":"B","element":"light","base":{"hp":88,"mp":82,"atk":55,"mag":94,"spd":54,"def":76},"traits":["regen","mana"],"learnset":[{"lv":1,"skill":"light"},{"lv":6,"skill":"heal"},{"lv":17,"skill":"bash"},{"lv":28,"skill":"roar"}]},"wolf":{"name":"グレイウルフ","family":"beast","rank":"F","element":"none","base":{"hp":55,"mp":24,"atk":74,"mag":28,"spd":82,"def":43},"traits":["quick","hunt"],"learnset":[{"lv":1,"skill":"bite"},{"lv":4,"skill":"roar"},{"lv":18,"skill":"wind"}]},"flameHound":{"name":"フレイムハウンド","family":"beast","rank":"D","element":"fire","base":{"hp":68,"mp":40,"atk":84,"mag":50,"spd":76,"def":52},"traits":["hunt","fireguard"],"learnset":[{"lv":1,"skill":"bite"},{"lv":6,"skill":"fire"},{"lv":17,"skill":"roar"}]},"moonWolf":{"name":"ムーンフェンリル","family":"beast","rank":"B","element":"dark","base":{"hp":82,"mp":62,"atk":98,"mag":74,"spd":105,"def":66},"traits":["quick","noct"],"learnset":[{"lv":1,"skill":"bite"},{"lv":8,"skill":"dark"},{"lv":18,"skill":"roar"},{"lv":30,"skill":"wind"}]},"hellHound":{"name":"ヘルハウンド","family":"beast","rank":"C","element":"fire","base":{"hp":78,"mp":50,"atk":96,"mag":62,"spd":88,"def":61},"traits":["hunt","fireguard"],"learnset":[{"lv":1,"skill":"bite"},{"lv":5,"skill":"fire"},{"lv":15,"skill":"dark"},{"lv":25,"skill":"roar"}]},"dragonWolf":{"name":"ドラゴンウルフ","family":"beast","rank":"B","element":"fire","base":{"hp":86,"mp":42,"atk":102,"mag":52,"spd":85,"def":70},"traits":["hunt","brave"],"learnset":[{"lv":1,"skill":"bite"},{"lv":6,"skill":"fire"},{"lv":16,"skill":"roar"},{"lv":28,"skill":"earth"}]},"worldBeast":{"name":"星喰らいの獣","family":"beast","rank":"S","element":"dark","base":{"hp":132,"mp":92,"atk":128,"mag":102,"spd":118,"def":95},"traits":["quick","hunt","brave"],"learnset":[{"lv":1,"skill":"bite"},{"lv":8,"skill":"dark"},{"lv":18,"skill":"wind"},{"lv":32,"skill":"roar"}]},"sandLynx":{"name":"サンドリンクス","family":"beast","rank":"C","element":"earth","base":{"hp":72,"mp":35,"atk":90,"mag":38,"spd":96,"def":62},"traits":["quick","hunt"],"learnset":[{"lv":1,"skill":"bite"},{"lv":7,"skill":"earth"},{"lv":19,"skill":"roar"}]},"hatchling":{"name":"チビドラゴン","family":"dragon","rank":"F","element":"fire","base":{"hp":66,"mp":30,"atk":62,"mag":42,"spd":38,"def":58},"traits":["brave"],"learnset":[{"lv":1,"skill":"bite"},{"lv":5,"skill":"fire"},{"lv":18,"skill":"roar"}]},"wyvern":{"name":"ストームワイバーン","family":"dragon","rank":"C","element":"wind","base":{"hp":78,"mp":52,"atk":82,"mag":66,"spd":86,"def":62},"traits":["quick"],"learnset":[{"lv":1,"skill":"bite"},{"lv":6,"skill":"wind"},{"lv":16,"skill":"roar"},{"lv":28,"skill":"earth"}]},"ancientDragon":{"name":"古竜アルカディア","family":"dragon","rank":"A","element":"fire","base":{"hp":118,"mp":86,"atk":112,"mag":106,"spd":72,"def":98},"traits":["brave","fireguard"],"learnset":[{"lv":1,"skill":"bite"},{"lv":8,"skill":"fire"},{"lv":18,"skill":"earth"},{"lv":32,"skill":"roar"}]},"mudDrake":{"name":"マッドドレイク","family":"dragon","rank":"E","element":"earth","base":{"hp":72,"mp":32,"atk":68,"mag":38,"spd":34,"def":72},"traits":["iron"],"learnset":[{"lv":1,"skill":"bite"},{"lv":6,"skill":"earth"},{"lv":20,"skill":"roar"}]},"tidalDrake":{"name":"タイダルドレイク","family":"dragon","rank":"C","element":"water","base":{"hp":84,"mp":62,"atk":82,"mag":78,"spd":58,"def":70},"traits":["regen"],"learnset":[{"lv":1,"skill":"bite"},{"lv":5,"skill":"water"},{"lv":17,"skill":"roar"},{"lv":30,"skill":"wind"}]},"luminousDragon":{"name":"ルミナスドラゴン","family":"dragon","rank":"B","element":"light","base":{"hp":98,"mp":82,"atk":92,"mag":102,"spd":76,"def":84},"traits":["mana","brave"],"learnset":[{"lv":1,"skill":"bite"},{"lv":7,"skill":"light"},{"lv":18,"skill":"heal"},{"lv":30,"skill":"roar"}]},"abyssDragon":{"name":"アビスドラゴン","family":"dragon","rank":"A","element":"dark","base":{"hp":112,"mp":88,"atk":116,"mag":112,"spd":82,"def":90},"traits":["noct","brave"],"learnset":[{"lv":1,"skill":"bite"},{"lv":6,"skill":"dark"},{"lv":18,"skill":"fire"},{"lv":32,"skill":"roar"}]},"sparrow":{"name":"ブレードバード","family":"bird","rank":"F","element":"wind","base":{"hp":48,"mp":34,"atk":58,"mag":45,"spd":88,"def":36},"traits":["quick"],"learnset":[{"lv":1,"skill":"bash"},{"lv":4,"skill":"wind"},{"lv":16,"skill":"roar"}]},"raven":{"name":"ナイトレイヴン","family":"bird","rank":"D","element":"dark","base":{"hp":64,"mp":55,"atk":67,"mag":72,"spd":94,"def":45},"traits":["noct"],"learnset":[{"lv":1,"skill":"wind"},{"lv":6,"skill":"dark"},{"lv":20,"skill":"sleep"}]},"stoneCondor":{"name":"ストーンコンドル","family":"bird","rank":"E","element":"earth","base":{"hp":62,"mp":28,"atk":70,"mag":32,"spd":72,"def":62},"traits":["iron"],"learnset":[{"lv":1,"skill":"bash"},{"lv":7,"skill":"earth"},{"lv":18,"skill":"wind"}]},"sunHawk":{"name":"サンホーク","family":"bird","rank":"C","element":"fire","base":{"hp":70,"mp":52,"atk":82,"mag":70,"spd":100,"def":52},"traits":["quick","fireguard"],"learnset":[{"lv":1,"skill":"wind"},{"lv":6,"skill":"fire"},{"lv":20,"skill":"roar"}]},"sacredOwl":{"name":"セイクリッドオウル","family":"bird","rank":"C","element":"light","base":{"hp":68,"mp":72,"atk":50,"mag":88,"spd":78,"def":58},"traits":["mana"],"learnset":[{"lv":1,"skill":"light"},{"lv":5,"skill":"heal"},{"lv":18,"skill":"sleep"}]},"stormEagle":{"name":"テンペストイーグル","family":"bird","rank":"B","element":"wind","base":{"hp":86,"mp":68,"atk":96,"mag":82,"spd":116,"def":64},"traits":["quick","brave"],"learnset":[{"lv":1,"skill":"wind"},{"lv":8,"skill":"bash"},{"lv":18,"skill":"roar"},{"lv":30,"skill":"light"}]},"nightPhoenix":{"name":"ナイトフェニックス","family":"bird","rank":"A","element":"fire","base":{"hp":102,"mp":94,"atk":92,"mag":112,"spd":112,"def":72},"traits":["regen","fireguard"],"learnset":[{"lv":1,"skill":"fire"},{"lv":8,"skill":"wind"},{"lv":18,"skill":"heal"},{"lv":32,"skill":"dark"}]},"sprout":{"name":"マンドラスプラウト","family":"plant","rank":"E","element":"earth","base":{"hp":66,"mp":48,"atk":40,"mag":62,"spd":30,"def":55},"traits":["root","regen"],"learnset":[{"lv":1,"skill":"poison"},{"lv":4,"skill":"heal"},{"lv":14,"skill":"earth"}]},"elderTree":{"name":"エルダートレント","family":"plant","rank":"B","element":"earth","base":{"hp":104,"mp":68,"atk":62,"mag":84,"spd":25,"def":92},"traits":["root","regen"],"learnset":[{"lv":1,"skill":"earth"},{"lv":6,"skill":"heal"},{"lv":16,"skill":"sleep"},{"lv":30,"skill":"roar"}]},"thornVine":{"name":"ソーンヴァイン","family":"plant","rank":"F","element":"earth","base":{"hp":58,"mp":30,"atk":58,"mag":42,"spd":32,"def":54},"traits":["root"],"learnset":[{"lv":1,"skill":"bash"},{"lv":5,"skill":"poison"},{"lv":18,"skill":"earth"}]},"healingHerb":{"name":"ヒールハーブ","family":"plant","rank":"E","element":"light","base":{"hp":62,"mp":62,"atk":32,"mag":72,"spd":44,"def":48},"traits":["regen"],"learnset":[{"lv":1,"skill":"heal"},{"lv":7,"skill":"light"},{"lv":20,"skill":"sleep"}]},"sporeBloom":{"name":"スポアブルーム","family":"plant","rank":"D","element":"dark","base":{"hp":72,"mp":66,"atk":38,"mag":82,"spd":38,"def":58},"traits":["root","mana"],"learnset":[{"lv":1,"skill":"poison"},{"lv":5,"skill":"sleep"},{"lv":16,"skill":"dark"}]},"flameCactus":{"name":"フレイムカクタス","family":"plant","rank":"C","element":"fire","base":{"hp":82,"mp":48,"atk":78,"mag":60,"spd":42,"def":76},"traits":["fireguard","root"],"learnset":[{"lv":1,"skill":"bash"},{"lv":6,"skill":"fire"},{"lv":18,"skill":"poison"}]},"worldTreeSpirit":{"name":"世界樹の精","family":"plant","rank":"A","element":"light","base":{"hp":116,"mp":112,"atk":64,"mag":120,"spd":54,"def":98},"traits":["regen","mana","root"],"learnset":[{"lv":1,"skill":"heal"},{"lv":7,"skill":"light"},{"lv":18,"skill":"earth"},{"lv":32,"skill":"sleep"}]},"imp":{"name":"コボルトデーモン","family":"demon","rank":"E","element":"dark","base":{"hp":54,"mp":52,"atk":52,"mag":70,"spd":55,"def":40},"traits":["mana"],"learnset":[{"lv":1,"skill":"dark"},{"lv":5,"skill":"fire"},{"lv":18,"skill":"roar"}]},"gargoyle":{"name":"ガーゴイル","family":"demon","rank":"C","element":"earth","base":{"hp":80,"mp":58,"atk":78,"mag":72,"spd":58,"def":80},"traits":["iron","noct"],"learnset":[{"lv":1,"skill":"earth"},{"lv":6,"skill":"dark"},{"lv":20,"skill":"roar"}]},"darkLord":{"name":"魔王ヴァルガス","family":"demon","rank":"S","element":"dark","base":{"hp":150,"mp":120,"atk":125,"mag":135,"spd":90,"def":110},"traits":["brave","mana","noct"],"learnset":[{"lv":1,"skill":"dark"},{"lv":8,"skill":"fire"},{"lv":18,"skill":"heal"},{"lv":28,"skill":"roar"}]},"fireImp":{"name":"フレアインプ","family":"demon","rank":"D","element":"fire","base":{"hp":62,"mp":64,"atk":54,"mag":86,"spd":68,"def":44},"traits":["mana","fireguard"],"learnset":[{"lv":1,"skill":"fire"},{"lv":7,"skill":"dark"},{"lv":20,"skill":"roar"}]},"stoneDemon":{"name":"ストーンデーモン","family":"demon","rank":"C","element":"earth","base":{"hp":88,"mp":54,"atk":84,"mag":68,"spd":42,"def":90},"traits":["iron"],"learnset":[{"lv":1,"skill":"earth"},{"lv":7,"skill":"bash"},{"lv":20,"skill":"dark"}]},"succubus":{"name":"ナイトサキュバス","family":"demon","rank":"B","element":"dark","base":{"hp":78,"mp":96,"atk":58,"mag":108,"spd":96,"def":58},"traits":["noct","mana"],"learnset":[{"lv":1,"skill":"dark"},{"lv":6,"skill":"sleep"},{"lv":18,"skill":"heal"},{"lv":30,"skill":"wind"}]},"voidReaper":{"name":"ヴォイドリーパー","family":"demon","rank":"A","element":"dark","base":{"hp":104,"mp":102,"atk":118,"mag":116,"spd":108,"def":82},"traits":["noct","brave"],"learnset":[{"lv":1,"skill":"dark"},{"lv":8,"skill":"bite"},{"lv":18,"skill":"sleep"},{"lv":32,"skill":"roar"}]},"golem":{"name":"ロックゴーレム","family":"material","rank":"D","element":"earth","base":{"hp":92,"mp":18,"atk":78,"mag":18,"spd":18,"def":100},"traits":["iron"],"learnset":[{"lv":1,"skill":"bash"},{"lv":6,"skill":"earth"},{"lv":22,"skill":"roar"}]},"armor":{"name":"リビングアーマー","family":"material","rank":"C","element":"earth","base":{"hp":84,"mp":35,"atk":88,"mag":34,"spd":35,"def":102},"traits":["iron"],"learnset":[{"lv":1,"skill":"bash"},{"lv":8,"skill":"earth"},{"lv":20,"skill":"dark"}]},"clayDoll":{"name":"クレイドール","family":"material","rank":"F","element":"earth","base":{"hp":64,"mp":24,"atk":54,"mag":30,"spd":28,"def":70},"traits":["iron"],"learnset":[{"lv":1,"skill":"bash"},{"lv":7,"skill":"earth"},{"lv":20,"skill":"stun"}]},"windGear":{"name":"ウィンドギア","family":"material","rank":"E","element":"wind","base":{"hp":60,"mp":42,"atk":64,"mag":54,"spd":74,"def":62},"traits":["quick"],"learnset":[{"lv":1,"skill":"bash"},{"lv":5,"skill":"wind"},{"lv":18,"skill":"stun"}]},"crystalCore":{"name":"クリスタルコア","family":"material","rank":"B","element":"light","base":{"hp":90,"mp":90,"atk":58,"mag":104,"spd":44,"def":104},"traits":["iron","mana"],"learnset":[{"lv":1,"skill":"light"},{"lv":7,"skill":"earth"},{"lv":18,"skill":"heal"},{"lv":30,"skill":"stun"}]},"flameMachine":{"name":"フレイムマシン","family":"material","rank":"A","element":"fire","base":{"hp":112,"mp":72,"atk":118,"mag":78,"spd":62,"def":112},"traits":["iron","fireguard"],"learnset":[{"lv":1,"skill":"bash"},{"lv":7,"skill":"fire"},{"lv":18,"skill":"earth"},{"lv":32,"skill":"roar"}]},"skull":{"name":"スカルナイト","family":"undead","rank":"D","element":"dark","base":{"hp":70,"mp":40,"atk":75,"mag":48,"spd":54,"def":58},"traits":["noct"],"learnset":[{"lv":1,"skill":"bash"},{"lv":6,"skill":"dark"},{"lv":20,"skill":"roar"}]},"lich":{"name":"リッチメイジ","family":"undead","rank":"B","element":"dark","base":{"hp":72,"mp":92,"atk":40,"mag":108,"spd":63,"def":55},"traits":["mana","noct"],"learnset":[{"lv":1,"skill":"dark"},{"lv":6,"skill":"fire"},{"lv":16,"skill":"sleep"},{"lv":28,"skill":"heal"}]},"ghost":{"name":"ミストゴースト","family":"undead","rank":"F","element":"dark","base":{"hp":46,"mp":48,"atk":32,"mag":62,"spd":68,"def":34},"traits":["noct"],"learnset":[{"lv":1,"skill":"dark"},{"lv":7,"skill":"sleep"},{"lv":18,"skill":"wind"}]},"mummy":{"name":"サンドマミー","family":"undead","rank":"E","element":"earth","base":{"hp":72,"mp":34,"atk":66,"mag":42,"spd":30,"def":62},"traits":["root"],"learnset":[{"lv":1,"skill":"bash"},{"lv":6,"skill":"earth"},{"lv":18,"skill":"poison"}]},"deathKnight":{"name":"デスナイト","family":"undead","rank":"C","element":"dark","base":{"hp":90,"mp":58,"atk":94,"mag":64,"spd":58,"def":82},"traits":["noct","iron"],"learnset":[{"lv":1,"skill":"bash"},{"lv":6,"skill":"dark"},{"lv":18,"skill":"roar"},{"lv":28,"skill":"earth"}]},"saintWraith":{"name":"セイントレイス","family":"undead","rank":"A","element":"light","base":{"hp":96,"mp":116,"atk":58,"mag":124,"spd":92,"def":78},"traits":["mana","regen"],"learnset":[{"lv":1,"skill":"light"},{"lv":6,"skill":"heal"},{"lv":18,"skill":"sleep"},{"lv":32,"skill":"dark"}]},"fish":{"name":"リバーフィン","family":"aquatic","rank":"F","element":"water","base":{"hp":60,"mp":38,"atk":55,"mag":48,"spd":62,"def":50},"traits":["scout"],"learnset":[{"lv":1,"skill":"bash"},{"lv":4,"skill":"water"},{"lv":18,"skill":"stun"}]},"leviathan":{"name":"リヴァイアサン","family":"aquatic","rank":"A","element":"water","base":{"hp":115,"mp":85,"atk":95,"mag":105,"spd":66,"def":92},"traits":["regen","mana"],"learnset":[{"lv":1,"skill":"water"},{"lv":7,"skill":"wind"},{"lv":18,"skill":"roar"},{"lv":32,"skill":"heal"}]},"mudCrab":{"name":"マッドクラブ","family":"aquatic","rank":"E","element":"earth","base":{"hp":76,"mp":28,"atk":62,"mag":32,"spd":22,"def":82},"traits":["iron"],"learnset":[{"lv":1,"skill":"bash"},{"lv":7,"skill":"earth"},{"lv":20,"skill":"water"}]},"reefSerpent":{"name":"リーフサーペント","family":"aquatic","rank":"C","element":"water","base":{"hp":86,"mp":58,"atk":82,"mag":72,"spd":74,"def":68},"traits":["regen"],"learnset":[{"lv":1,"skill":"bite"},{"lv":6,"skill":"water"},{"lv":18,"skill":"poison"}]},"stormRay":{"name":"ストームレイ","family":"aquatic","rank":"B","element":"wind","base":{"hp":82,"mp":74,"atk":84,"mag":92,"spd":108,"def":60},"traits":["quick","mana"],"learnset":[{"lv":1,"skill":"water"},{"lv":7,"skill":"wind"},{"lv":18,"skill":"stun"},{"lv":30,"skill":"roar"}]},"abyssKraken":{"name":"アビスクラーケン","family":"aquatic","rank":"B","element":"dark","base":{"hp":112,"mp":82,"atk":102,"mag":94,"spd":44,"def":86},"traits":["noct","regen"],"learnset":[{"lv":1,"skill":"water"},{"lv":7,"skill":"dark"},{"lv":18,"skill":"poison"},{"lv":30,"skill":"roar"}]}};
 
 const FAMILY_DEFAULT = {
-  slime:"aquaSlime",beast:"flameHound",dragon:"wyvern",bird:"raven",plant:"elderTree",
-  demon:"gargoyle",material:"armor",undead:"lich",aquatic:"leviathan"
+  slime:"aquaSlime",beast:"flameHound",dragon:"mudDrake",bird:"stoneCondor",plant:"healingHerb",
+  demon:"fireImp",material:"windGear",undead:"mummy",aquatic:"mudCrab"
 };
 
 const SPECIAL_BREEDS = {
@@ -192,8 +184,35 @@ const SPECIAL_BREEDS = {
   ["slime+golem"]:"armorSlime",
   ["wolf+flameHound"]:"moonWolf",
   ["dragonWolf+moonWolf"]:"worldBeast",
-  ["aquaSlime+slime"]:"kingSlime"
+  ["aquaSlime+slime"]:"kingSlime",
+  ["sparrow+flameHound"]:"sunHawk",
+  ["raven+flameHound"]:"nightPhoenix",
+  ["healingHerb+holySlime"]:"worldTreeSpirit",
+  ["wyvern+reefSerpent"]:"leviathan",
+  ["moonWolf+succubus"]:"voidReaper",
+  ["holySlime+gargoyle"]:"crystalCore",
+  ["emberSlime+golem"]:"flameMachine",
+  ["tidalDrake+holySlime"]:"luminousDragon",
+  ["abyssDragon+lich"]:"saintWraith",
+  ["stormEagle+tidalDrake"]:"leviathan"
 };
+
+const BOSS_BREEDS = [
+  {species:"imp",pair:["emberSlime","ghost"],zone:"meadow"},
+  {species:"gargoyle",pair:["golem","raven"],zone:"forest"},
+  {species:"wyvern",pair:["mudDrake","sunHawk"],zone:"volcano"},
+  {species:"lich",pair:["skull","succubus"],zone:"ruins"},
+  {species:"abyssKraken",pair:["reefSerpent","sporeBloom"],zone:"marsh"},
+  {species:"stormEagle",pair:["sunHawk","windGear"],zone:"highlands"},
+  {species:"ancientDragon",pair:["luminousDragon","flameMachine"],zone:"sky"},
+  {species:"darkLord",pair:["abyssDragon","voidReaper"],zone:"abyss"}
+];
+
+const BOSS_SPECIES=new Set(BOSS_BREEDS.map(r=>r.species));
+const BOSS_NORM={};
+for(const r of BOSS_BREEDS){
+  BOSS_NORM[r.pair.slice().sort().join("+")]=r;
+}
 
 const SPECIAL_NORM={};for(const[k,v]of Object.entries(SPECIAL_BREEDS))SPECIAL_NORM[k.split("+").sort().join("+")]=v;
 const FAM_ICON={slime:"🟢",beast:"🐺",dragon:"🐉",bird:"🦅",plant:"🌿",demon:"😈",material:"🗿",undead:"💀",aquatic:"🐟"};
@@ -214,16 +233,469 @@ const FAMILY_CROSS = {
 };
 
 const ZONES = [
-  {id:"meadow",name:"はじまりの草原",unlock:0,desc:"王都近郊。弱い魔物が暮らす草原。",wild:["slime","wolf","sparrow","fish"],levels:[2,6],boss:"imp",bossLevel:8},
-  {id:"forest",name:"深緑の森",unlock:1,desc:"毒草と古木が生い茂る森。",wild:["sprout","wolf","raven","aquaSlime"],levels:[6,12],boss:"gargoyle",bossLevel:14},
-  {id:"volcano",name:"赤岩火山",unlock:2,desc:"竜と炎獣が棲む危険地帯。",wild:["hatchling","flameHound","golem","imp"],levels:[12,20],boss:"wyvern",bossLevel:23},
-  {id:"ruins",name:"亡国の遺跡",unlock:3,desc:"魔王軍に滅ぼされた古い帝国。",wild:["skull","armor","gargoyle","raven"],levels:[20,30],boss:"lich",bossLevel:34},
-  {id:"abyss",name:"魔王領",unlock:4,desc:"魔王ヴァルガスが待つ暗黒の大地。",wild:["lich","gargoyle","ancientDragon","leviathan"],levels:[30,42],boss:"darkLord",bossLevel:46}
+  {id:"meadow",name:"はじまりの草原",unlock:0,desc:"王都近郊。弱い魔物が暮らす草原。",wild:["slime","wolf","sparrow","fish","thornVine","ghost","clayDoll","healingHerb"],levels:[2,6],boss:"imp",bossLevel:8},
+  {id:"forest",name:"深緑の森",unlock:1,desc:"毒草と古木が生い茂る森。風と大地の魔物も姿を見せる。",wild:["sprout","raven","aquaSlime","healingHerb","sporeBloom","sandLynx","stoneCondor","mudCrab","breezeSlime"],levels:[6,13],boss:"gargoyle",bossLevel:14,hpMult:1,dmgMult:1},
+  {id:"volcano",name:"赤岩火山",unlock:2,desc:"竜と炎獣、灼熱に適応した魔物が棲む危険地帯。",wild:["hatchling","flameHound","golem","emberSlime","fireImp","flameCactus","mudDrake","sunHawk","hellHound","armorSlime"],levels:[12,21],boss:"wyvern",bossLevel:23,hpMult:1.4,dmgMult:1.25},
+  {id:"ruins",name:"亡国の遺跡",unlock:3,desc:"魔王軍に滅ぼされた古い帝国。死霊と機構魔物が徘徊する。",wild:["skull","armor","gargoyle","raven","mummy","deathKnight","stoneDemon","crystalCore","windGear","reefSerpent","armorSlime","kingSlime"],levels:[20,31],boss:"lich",bossLevel:34,hpMult:1.4,dmgMult:1.25},
+  {id:"marsh",name:"黒霧の湿原",unlock:4,desc:"濃霧と毒沼に覆われた湿地。水棲・植物・闇の魔物が集う。",wild:["aquaSlime","kingSlime","sprout","elderTree","sporeBloom","tidalDrake","reefSerpent","stormRay","ghost","succubus"],levels:[28,39],boss:"abyssKraken",bossLevel:42,hpMult:1.1,dmgMult:1.25},
+  {id:"highlands",name:"雷鳴の高原",unlock:5,desc:"絶えず雷雲が流れる高地。高速の獣と飛行魔物が縄張りを争う。",wild:["wolf","sandLynx","moonWolf","dragonWolf","breezeSlime","sunHawk","sacredOwl","wyvern","windGear","hellHound","stormRay"],levels:[35,47],boss:"stormEagle",bossLevel:50,hpMult:1.5,dmgMult:1.4},
+  {id:"sky",name:"天空神殿",unlock:6,desc:"雲上に浮かぶ古代神殿。光の魔物と古代兵器、上位竜が姿を現す。",wild:["luminousDragon","sacredOwl","stormEagle","crystalCore","saintWraith","worldTreeSpirit","tidalDrake","nightPhoenix","holySlime","flameMachine","leviathan"],levels:[43,55],boss:"ancientDragon",bossLevel:58,hpMult:1.4,dmgMult:1.35},
+  {id:"abyss",name:"魔王領",unlock:7,desc:"魔王ヴァルガスが待つ暗黒の大地。各系統の最上位魔物が集う。",wild:["lich","gargoyle","ancientDragon","leviathan","moonWolf","luminousDragon","abyssDragon","stormEagle","nightPhoenix","succubus","voidReaper","worldTreeSpirit","saintWraith","abyssKraken","holySlime","flameMachine","deathKnight","dragonWolf"],levels:[50,62],boss:"darkLord",bossLevel:64,hpMult:1.5,dmgMult:1.15}
 ];
 
 const ELEMENT_ADV = {fire:"wind",wind:"earth",earth:"water",water:"fire",light:"dark",dark:"light"};
 
+const STATUS_RULES = {
+  poison:{name:"毒",turns:4},
+  sleep:{name:"睡眠",turns:2},
+  paralyze:{name:"麻痺",turns:3}
+};
+
+function isMainBoss(m){
+  return !!(battle?.isBoss && battle.enemies?.includes(m) && BOSS_MOVES[m.species]);
+}
+
+function statusChance(target,baseChance){
+  let mult=1;
+  if(target.traits.includes("root"))mult*=.75;
+  if(isMainBoss(target))mult*=.55;
+  return clamp(baseChance*mult,0,.95);
+}
+
+function statusDuration(target,status){
+  let turns=STATUS_RULES[status]?.turns||3;
+  if(isMainBoss(target))turns=Math.max(1,turns-1);
+  return turns;
+}
+
+function clearStatus(m,withLog=true){
+  if(!m.status)return;
+  const old=m.status;
+  m.status=null;
+  m.statusTurns=0;
+  if(withLog)battleLog(`${MONSTERS[m.species].name}の${STATUS_RULES[old]?.name||"状態異常"}が治った！`);
+}
+
+function tryInflictStatus(actor,target,status,baseChance,sourceName=""){
+  if(!STATUS_RULES[status]||target.hp<=0)return false;
+  if(target.status){
+    if(sourceName)battleLog(`${sourceName}は効かなかった。`);
+    return false;
+  }
+
+  const chance=statusChance(target,baseChance);
+  if(Math.random()>=chance){
+    if(sourceName)battleLog(`${sourceName}は効かなかった。`);
+    return false;
+  }
+
+  target.status=status;
+  target.statusTurns=statusDuration(target,status);
+  battleLog(`${MONSTERS[target.species].name}は${STATUS_RULES[status].name}になった！（${target.statusTurns}ターン）`);
+  return true;
+}
+
+const SAVE_VERSION = 6;
 const MAX_LEVEL = 99;
+const BLOODLINE_MAX = 99;
+
+// ===== 物語（v1.0.0） =====
+const STORY_CHAPTERS = {
+  meadow:"黒い紋様",
+  forest:"石像が探すもの",
+  volcano:"縛られた竜",
+  ruins:"失われた継承研究",
+  marsh:"魔王より古い霧",
+  highlands:"魔物の側の戦い",
+  sky:"二つの完成体",
+  abyss:"継承の意味"
+};
+
+const STORY_OBJECTIVES = {
+  meadow:"王都近郊で起きている魔物の凶暴化を調べる。",
+  forest:"ガーゴイルが探しているものと、魔王軍の目的を追う。",
+  volcano:"火山で暴走する竜族と、黒い拘束具の正体を確かめる。",
+  ruins:"亡国の研究施設で『継承』と魔王誕生の記録を探す。",
+  marsh:"魔王の魔力とは異なる黒霧の発生源を調べる。",
+  highlands:"魔王軍と戦う空の王に接触し、天空への道を得る。",
+  sky:"古竜アルカディアから、ヴァルガス誕生の真実を聞き出す。",
+  abyss:"魔王ヴァルガスと対峙し、彼が選んだ破壊の道を止める。"
+};
+
+const STORY_SCENES = {
+  prologue:{
+    chapter:"序章",
+    title:"継承師の旅立ち",
+    lines:[
+      {speaker:"語り",text:"魔王ヴァルガスの出現から半年。各地の魔物は急速に力を増し、人の領域へ押し寄せ始めていた。"},
+      {speaker:"王都研究官",text:"魔物の血脈そのものが活性化しています。普通の調教師では、この変化に追いつけません。"},
+      {speaker:"王都研究官",text:"あなたには、異なる魔物の力を次代へ繋ぐ『継承』の才がある。力を集め、魔王軍の源を突き止めてください。"},
+      {speaker:"語り",text:"{player}は最初の相棒とともに王都を出る。最初の目的地は、異変が最初に確認された『はじまりの草原』だった。"}
+    ]
+  },
+
+  meadow_intro:{
+    chapter:"第一章",
+    title:"黒い紋様",
+    lines:[
+      {speaker:"王都騎士",text:"昨日までは人を避けていた魔物まで襲ってくる。しかも倒した個体には、同じ黒い紋様が残っている。"},
+      {speaker:"語り",text:"草原の奥へ向かうほど、魔物の魔力は不自然に濃くなっていた。"},
+      {speaker:"王都騎士",text:"この先に、魔物を煽っている奴がいるはずだ。気をつけてくれ、継承師。"}
+    ]
+  },
+  meadow_bossBefore:{
+    chapter:"第一章",
+    title:"草原の支配者",
+    lines:[
+      {speaker:"コボルトデーモン",text:"弱い血は喰われ、強い血だけが残る。それが魔王様の新しい世界だ！"},
+      {speaker:"語り",text:"その胸にも、魔物たちと同じ黒い紋様が脈打っている。"},
+      {speaker:"主人公",text:"なら、その紋様ごと止める。"}
+    ]
+  },
+  meadow_bossAfter:{
+    chapter:"第一章",
+    title:"残された命令",
+    lines:[
+      {speaker:"語り",text:"黒い紋様は砕け、魔力の欠片となって消えた。そこには魔王軍の命令札が残されていた。"},
+      {speaker:"王都研究官",text:"『深緑の森で古い標を捜索せよ』……魔王軍は、ただ領土を広げているわけではないようです。"},
+      {speaker:"語り",text:"倒した強敵の血脈を読み解いたことで、その魔物へ至る配合の道も見えるようになった。"}
+    ]
+  },
+
+  forest_intro:{
+    chapter:"第二章",
+    title:"石像が探すもの",
+    lines:[
+      {speaker:"語り",text:"深緑の森には、魔物に荒らされた跡とは別に、地面を掘り返した痕跡が続いていた。"},
+      {speaker:"森の番人",text:"石の悪魔たちは木を壊したいんじゃない。何かの『標』を探している。"},
+      {speaker:"語り",text:"森の最深部から、石を削る重い音が響く。"}
+    ]
+  },
+  forest_bossBefore:{
+    chapter:"第二章",
+    title:"古代の標",
+    lines:[
+      {speaker:"ガーゴイル",text:"標……門……亡国へ至る座標……。"},
+      {speaker:"主人公",text:"魔王軍が探しているのは、滅びた国の遺跡か。"},
+      {speaker:"ガーゴイル",text:"妨害者を排除する。"}
+    ]
+  },
+  forest_bossAfter:{
+    chapter:"第二章",
+    title:"火山を越えて",
+    lines:[
+      {speaker:"語り",text:"ガーゴイルが掘り出していた石板には、亡国へ続く古い道が刻まれていた。"},
+      {speaker:"王都研究官",text:"直通路は崩落しています。赤岩火山を越えるしかありません。"},
+      {speaker:"王都研究官",text:"ただし妙です。なぜ魔王が、何百年も前に滅びた国を調べているのでしょう。"}
+    ]
+  },
+
+  volcano_intro:{
+    chapter:"第三章",
+    title:"縛られた竜",
+    lines:[
+      {speaker:"語り",text:"火山では、炎の魔物だけでなく竜族まで狂ったように暴れていた。"},
+      {speaker:"王都研究官",text:"首元を見てください。黒い魔力でできた拘束具です。あれが力を無理やり引き出している。"},
+      {speaker:"語り",text:"火口から、嵐をまとった竜の咆哮が響いた。"}
+    ]
+  },
+  volcano_bossBefore:{
+    chapter:"第三章",
+    title:"暴走する翼",
+    lines:[
+      {speaker:"語り",text:"ストームワイバーンは敵意よりも苦痛に身をよじっている。黒い拘束具が翼へ食い込んでいた。"},
+      {speaker:"主人公",text:"倒すためじゃない。止めるために戦う。"},
+      {speaker:"語り",text:"暴風が火口を覆う。"}
+    ]
+  },
+  volcano_bossAfter:{
+    chapter:"第三章",
+    title:"増幅された血脈",
+    lines:[
+      {speaker:"語り",text:"拘束具が砕けると、ワイバーンの荒い呼吸は少しずつ静まった。"},
+      {speaker:"王都研究官",text:"これは魔物の血脈を強制的に増幅する術式です。自然な成長でも、あなたの継承とも違う。"},
+      {speaker:"語り",text:"術式には、亡国の紋章が刻まれていた。"}
+    ]
+  },
+
+  ruins_intro:{
+    chapter:"第四章",
+    title:"失われた継承研究",
+    lines:[
+      {speaker:"語り",text:"亡国の遺跡。その地下には、宮殿ではなく巨大な研究施設が眠っていた。"},
+      {speaker:"王都研究官",text:"記録の見出しは『血脈継承による完成種の創出』……。"},
+      {speaker:"語り",text:"奥から、乾いた笑い声が響く。"}
+    ]
+  },
+  ruins_bossBefore:{
+    chapter:"第四章",
+    title:"記録の番人",
+    lines:[
+      {speaker:"リッチメイジ",text:"継承を操る者が、ついにここまで来たか。"},
+      {speaker:"リッチメイジ",text:"知りたいのだろう？　魔王が何者なのか。ならば、その力が記録を受け取るに値するか示せ。"},
+      {speaker:"主人公",text:"望むところだ。"}
+    ]
+  },
+  ruins_bossAfter:{
+    chapter:"第四章",
+    title:"王の器",
+    lines:[
+      {speaker:"リッチメイジ",text:"……よい。記録はお前に託そう。"},
+      {speaker:"王都研究官",text:"『完成体・王の器ヴァルガス』。魔王は自然に生まれた存在ではない……人の研究から作られた魔物です。"},
+      {speaker:"語り",text:"さらに記録には、もう一つの完成体を示す名があった。だが、その部分だけが黒く焼け落ちている。"}
+    ]
+  },
+
+  marsh_intro:{
+    chapter:"第五章",
+    title:"魔王より古い霧",
+    lines:[
+      {speaker:"語り",text:"黒霧の湿原を覆う闇は、これまで見た魔王軍の魔力とは性質が違っていた。"},
+      {speaker:"王都研究官",text:"古い。ヴァルガスが生まれるより、はるか以前からここに染みついています。"},
+      {speaker:"語り",text:"湿原の底で、巨大な何かが目を覚ます。"}
+    ]
+  },
+  marsh_bossBefore:{
+    chapter:"第五章",
+    title:"深淵の触手",
+    lines:[
+      {speaker:"語り",text:"アビスクラーケンの触手には、黒い紋様ではなく古代の封印文字が絡みついていた。"},
+      {speaker:"王都研究官",text:"魔王軍がこれを解放しようとした……？　いいえ、逆です。封印を補強した痕跡がある。"},
+      {speaker:"主人公",text:"ヴァルガスは、何を恐れている？"}
+    ]
+  },
+  marsh_bossAfter:{
+    chapter:"第五章",
+    title:"深淵の脈動",
+    lines:[
+      {speaker:"語り",text:"クラーケンが沈むと、湿原の霧が一瞬だけ割れた。遠い空に巨大な影が映り、すぐ消える。"},
+      {speaker:"王都研究官",text:"魔王は世界を攻めながら、同時に何かを封じている。矛盾しているように見えます。"},
+      {speaker:"語り",text:"雷鳴の高原から、魔王軍と争う巨大な飛行魔物の報告が届いた。"}
+    ]
+  },
+
+  highlands_intro:{
+    chapter:"第六章",
+    title:"魔物の側の戦い",
+    lines:[
+      {speaker:"語り",text:"雷鳴の高原では、魔王軍の残骸が空から降り注いでいた。"},
+      {speaker:"旅商人",text:"この土地の王は人間の味方じゃない。でも魔王軍の味方でもない。空を荒らす者すべてを敵とみなす。"},
+      {speaker:"語り",text:"雲を裂き、テンペストイーグルが降下する。"}
+    ]
+  },
+  highlands_bossBefore:{
+    chapter:"第六章",
+    title:"空の王の問い",
+    lines:[
+      {speaker:"テンペストイーグル",text:"人の継承師よ。お前もまた、魔物を『素材』と呼ぶ者か。"},
+      {speaker:"主人公",text:"力を借りている。その重さまで忘れるつもりはない。"},
+      {speaker:"テンペストイーグル",text:"言葉ではなく、戦いで示せ。"}
+    ]
+  },
+  highlands_bossAfter:{
+    chapter:"第六章",
+    title:"天空への道",
+    lines:[
+      {speaker:"テンペストイーグル",text:"……よい。お前の群れは、命令だけで動いてはいない。"},
+      {speaker:"テンペストイーグル",text:"真実を知るなら天空神殿へ行け。古竜は、ヴァルガスが生まれた夜を知っている。"},
+      {speaker:"語り",text:"空の王が翼を広げる。雲の向こうに、古い神殿への道が現れた。"}
+    ]
+  },
+
+  sky_intro:{
+    chapter:"第七章",
+    title:"二つの完成体",
+    lines:[
+      {speaker:"語り",text:"天空神殿の壁画には、人と魔物が並んで描かれていた。だが最後の壁画だけ、二頭の巨大な獣が世界を挟んで向かい合っている。"},
+      {speaker:"王都研究官",text:"一方はヴァルガス。もう一方は……記録から消された完成体？"},
+      {speaker:"古竜アルカディア",text:"答えを欲する者よ。まず、お前が血脈の力に呑まれていないことを示せ。"}
+    ]
+  },
+  sky_bossBefore:{
+    chapter:"第七章",
+    title:"古竜の試練",
+    lines:[
+      {speaker:"古竜アルカディア",text:"力を繋ぐことと、命を使い潰すこと。その違いを、お前自身は説明できるか。"},
+      {speaker:"主人公",text:"まだ答えは完成していない。だから、ここまで来た。"},
+      {speaker:"古竜アルカディア",text:"ならば来い。未完成の答えを、力とともに見せてみろ。"}
+    ]
+  },
+  sky_bossAfter:{
+    chapter:"第七章",
+    title:"星喰らい",
+    lines:[
+      {speaker:"古竜アルカディア",text:"ヴァルガスは、人が作った『支配する完成体』。だが同じ研究から、もう一つの可能性が生まれた。"},
+      {speaker:"古竜アルカディア",text:"名は『星喰らいの獣』。際限なく血脈を取り込み、世界そのものを餌とする器だ。"},
+      {speaker:"古竜アルカディア",text:"ヴァルガスは人を憎んだ。そして星喰らいを恐れた。魔王領の結界は、奴の城を守るためだけのものではない。"}
+    ]
+  },
+
+  abyss_intro:{
+    chapter:"最終章",
+    title:"継承の意味",
+    lines:[
+      {speaker:"語り",text:"魔王領。そこでは人間の軍だけでなく、魔王軍自身も巨大な結界を守っていた。"},
+      {speaker:"王都研究官",text:"アルカディアの話は本当です。結界の外側から、何かが侵入しようとしている。"},
+      {speaker:"語り",text:"それでも侵攻によって失われた命は戻らない。答えを求め、{player}は魔王城へ進む。"}
+    ]
+  },
+  abyss_bossBefore:{
+    chapter:"最終章",
+    title:"魔王ヴァルガス",
+    lines:[
+      {speaker:"魔王ヴァルガス",text:"来たか、継承師。魔物を仲間と呼びながら、親を消し、より強い血を求め続ける者よ。"},
+      {speaker:"魔王ヴァルガス",text:"我を作った人間たちも同じ言葉を使った。『未来のため』『より強い命のため』とな。"},
+      {speaker:"主人公",text:"同じ部分があることは否定しない。だからこそ、力を持つ側が何を選ぶかから逃げない。"},
+      {speaker:"魔王ヴァルガス",text:"ならば示せ。お前の継承が、支配と違うという証を！"}
+    ]
+  },
+  abyss_bossAfter:{
+    chapter:"最終章",
+    title:"魔王の選択",
+    lines:[
+      {speaker:"魔王ヴァルガス",text:"……我は兵器として生まれ、人を憎み、世界を壊せば自由になれると思った。"},
+      {speaker:"魔王ヴァルガス",text:"だが星喰らいまで解き放てば、魔物も人も残らぬ。それだけは許せなかった。"},
+      {speaker:"主人公",text:"世界を守ったことと、侵攻で奪った命は別だ。どちらも消えない。"},
+      {speaker:"魔王ヴァルガス",text:"それでよい。継ぐ者よ……都合の悪い記憶まで、捨てるな。"}
+    ]
+  },
+
+  ending:{
+    chapter:"終章",
+    title:"受け継ぐもの",
+    lines:[
+      {speaker:"語り",text:"魔王軍の侵攻は止まり、各地の魔物を縛っていた黒い術式も次第に消えていった。"},
+      {speaker:"王都研究官",text:"継承の技術そのものが善でも悪でもない。誰が、何のために使うのか。その記録を残すところから始めましょう。"},
+      {speaker:"語り",text:"{player}の旅は英雄譚としてではなく、『魔物と力をどう受け継ぐか』という新しい問いとして王都に残された。"}
+    ]
+  },
+
+  postgame:{
+    chapter:"クリア後",
+    title:"欠けた星",
+    lines:[
+      {speaker:"語り",text:"その夜。平和を取り戻した空で、一つの星が不自然に欠けた。"},
+      {speaker:"古竜アルカディアの伝承",text:"二つの獣の血が重なる時、星を喰らう器は再び形を得る。"},
+      {speaker:"語り",text:"牧場のどこかで、二つの血脈がかすかに共鳴した。物語は、まだ終わっていない。"}
+    ]
+  }
+};
+
+let storyState=null;
+let storyAfter=null;
+
+function storyText(text){
+  const starter=partyMons()[0];
+  return String(text||"")
+    .replaceAll("{player}",game?.name||"旅人")
+    .replaceAll("{starter}",starter?MONSTERS[starter.species].name:"最初の相棒");
+}
+
+function hasSeenStory(key){
+  return !!game?.storySeen?.includes(key);
+}
+
+function markStorySeen(key){
+  if(!game)return;
+  if(!Array.isArray(game.storySeen))game.storySeen=[];
+  if(!game.storySeen.includes(key))game.storySeen.push(key);
+}
+
+function playStory(key,after=null){
+  const scene=STORY_SCENES[key];
+  if(!scene){
+    if(after)after();
+    return;
+  }
+  storyState={key,index:0};
+  storyAfter=after;
+  render();
+}
+
+function playStorySequence(keys,after=null){
+  const queue=(keys||[]).filter(k=>STORY_SCENES[k]);
+  if(!queue.length){
+    if(after)after();
+    else render();
+    return;
+  }
+  const [first,...rest]=queue;
+  playStory(first,()=>playStorySequence(rest,after));
+}
+
+function advanceStory(){
+  if(!storyState)return;
+  const scene=STORY_SCENES[storyState.key];
+  if(!scene){storyState=null;render();return}
+
+  storyState.index++;
+  if(storyState.index<scene.lines.length){
+    render();
+    return;
+  }
+
+  const key=storyState.key;
+  const after=storyAfter;
+  markStorySeen(key);
+  storyState=null;
+  storyAfter=null;
+  save();
+
+  if(after)after();
+  else render();
+}
+
+function replayStory(key){
+  if(!hasSeenStory(key)||!STORY_SCENES[key])return;
+  playStory(key,null);
+}
+
+function renderStory(){
+  const scene=STORY_SCENES[storyState.key];
+  const line=scene.lines[storyState.index];
+  const last=storyState.index>=scene.lines.length-1;
+  return `<div class="storybox">
+    <div class="story-chapter">${scene.chapter}</div>
+    <h2>${scene.title}</h2>
+    <div class="hr"></div>
+    <div class="story-speaker">${line.speaker||"語り"}</div>
+    <div class="story-text">${storyText(line.text)}</div>
+    <div class="story-progress">${storyState.index+1} / ${scene.lines.length}</div>
+    <div class="actions">
+      <button class="primary" onclick="advanceStory()">${last?"進む":"次へ"}</button>
+    </div>
+  </div>`;
+}
+
+function currentObjective(){
+  if(game.won)return "魔王は倒れた。古竜が残した『星喰らいの獣』の血脈を追う。";
+  const z=ZONES[Math.min(game.bossesDefeated,ZONES.length-1)];
+  return z?STORY_OBJECTIVES[z.id]:"各地の異変を調べる。";
+}
+
+function migratedStorySeen(g){
+  const seen=new Set(Array.isArray(g.storySeen)?g.storySeen.filter(k=>STORY_SCENES[k]):[]);
+  if(!g.started)return [...seen];
+
+  seen.add("prologue");
+
+  for(const z of ZONES){
+    const p=Number(g.zoneProgress?.[z.id])||0;
+    if(p>0 || g.bossesDefeated>z.unlock)seen.add(`${z.id}_intro`);
+
+    if(g.bossesDefeated>z.unlock){
+      seen.add(`${z.id}_bossBefore`);
+      seen.add(`${z.id}_bossAfter`);
+    }
+  }
+
+  if(g.won){
+    seen.add("ending");
+    seen.add("postgame");
+  }
+  return [...seen];
+}
+
 let autoTraining = false;
 let uidCounter = 1;
 function uid(){ return "m"+Date.now().toString(36)+(uidCounter++).toString(36); }
@@ -236,11 +708,39 @@ function traitName(k){return TRAITS[k]?.name||k}
 function skillName(k){return SKILLS[k]?.name||k}
 function bloodlineTitle(p){
   p=p||0;
-  if(p>=10)return "極血統";
-  if(p>=6)return "名血";
-  if(p>=3)return "良血";
+  if(p>=99)return "神血統";
+  if(p>=75)return "覇血";
+  if(p>=50)return "王血";
+  if(p>=30)return "伝説血統";
+  if(p>=20)return "極血統";
+  if(p>=10)return "名血";
+  if(p>=5)return "良血";
   if(p>=1)return "継承";
   return "初代";
+}
+
+function skillsForLevel(species,level){
+  const def=MONSTERS[species];
+  if(!def)return [];
+  const learned=(def.learnset||[])
+    .filter(x=>x.lv<=level&&SKILLS[x.skill])
+    .sort((a,b)=>a.lv-b.lv)
+    .map(x=>x.skill);
+  return [...new Set(learned)].slice(-4);
+}
+function syncLearnset(m){
+  const unlocked=skillsForLevel(m.species,m.level);
+  if(!Array.isArray(m.skills))m.skills=[];
+  for(const sk of unlocked){
+    if(m.skills.includes(sk))continue;
+    if(m.skills.length<4)m.skills.push(sk);
+  }
+  return m.skills;
+}
+function discoverSpecies(id){
+  if(!game||!MONSTERS[id])return;
+  if(!Array.isArray(game.discovered))game.discovered=[];
+  if(!game.discovered.includes(id))game.discovered.push(id);
 }
 
 function newMonster(species, level=1, overrides={}){
@@ -249,9 +749,10 @@ function newMonster(species, level=1, overrides={}){
     uid:uid(), species, level, exp:0,
     nature:overrides.nature||natureKey(),
     traits:overrides.traits||[pick(def.traits)],
-    skills:overrides.skills||def.skills.slice(0,3),
+    skills:overrides.skills||skillsForLevel(species,level),
     breedPts:overrides.breedPts||{hp:0,atk:0,def:0,mag:0,spd:0},
     plus:overrides.plus||0,
+    hpMult:overrides.hpMult||1,
     status:null,statusTurns:0,
     buffs:{atk:0,def:0,mag:0,spd:0},
     buffTurns:{atk:0,def:0,mag:0,spd:0},
@@ -269,6 +770,7 @@ function calcStats(m){
   for(const k of ["hp","mp","atk","def","mag","spd"]){
     let val=b[k]*scale;
     val*=1+((m.plus||0)*0.02);
+    if(k==="hp")val*=m.hpMult||1;
     if(k!=="mp"){
       const pts=m.breedPts?.[k]||0;
       val*=1+pts*0.02;
@@ -297,28 +799,86 @@ let breedDraft = {a:null,b:null,child:null,points:0,alloc:{hp:0,atk:0,def:0,mag:
 
 function defaultGame(){
   return {
+    saveVersion:SAVE_VERSION,
     started:false,name:"",gold:300,potions:5,scoutBait:3,
-    monsters:[],party:[],zoneProgress:{meadow:0,forest:0,volcano:0,ruins:0,abyss:0},
+    monsters:[],party:[],reserve:[],discovered:[],bossRecipes:[],storySeen:[],zoneProgress:{meadow:0,forest:0,volcano:0,ruins:0,marsh:0,highlands:0,sky:0,abyss:0},
     bossesDefeated:0,turns:0,won:false,log:["魔王ヴァルガスが世界への侵攻を始めた。"]
   };
 }
 
+function migrate(data){
+  const base=defaultGame();
+  const g=(data&&typeof data==="object")?data:{};
+  const fromVersion=Number(g.saveVersion)||1;
+  for(const [k,v] of Object.entries(base)){
+    if(g[k]===undefined)g[k]=deep(v);
+  }
+  g.zoneProgress={...base.zoneProgress,...(g.zoneProgress||{})};
+  g.monsters=(g.monsters||[]).filter(m=>m&&MONSTERS[m.species]).map(m=>{
+    m.level=clamp(Number(m.level)||1,1,MAX_LEVEL);
+    m.exp=Math.max(0,Number(m.exp)||0);
+    if(typeof m.plus!=="number")m.plus=0;
+    if(!m.breedPts)m.breedPts={hp:0,atk:0,def:0,mag:0,spd:0};
+    if(!NATURES[m.nature])m.nature="honest";
+    if(!Array.isArray(m.traits)||!m.traits.length)m.traits=[pick(MONSTERS[m.species].traits)];
+    m.traits=m.traits.filter(t=>TRAITS[t]).slice(0,3);
+    if(!Array.isArray(m.skills)||!m.skills.length)m.skills=skillsForLevel(m.species,m.level);
+    m.skills=m.skills.filter(s=>SKILLS[s]).slice(0,4);
+    syncLearnset(m);
+    const s=calcStats(m);
+    const hpNum=Number(m.hp),mpNum=Number(m.mp);
+    m.hp=clamp(Number.isFinite(hpNum)?hpNum:s.hp,0,s.hp);
+    m.mp=clamp(Number.isFinite(mpNum)?mpNum:s.mp,0,s.mp);
+    m.status=m.status||null;
+    m.statusTurns=Number(m.statusTurns)||0;
+    m.buffs=m.buffs||{atk:0,def:0,mag:0,spd:0};
+    m.buffTurns=m.buffTurns||{atk:0,def:0,mag:0,spd:0};
+    return m;
+  });
+  const validIds=new Set(g.monsters.map(m=>m.uid));
+  g.party=[...new Set((g.party||[]).filter(id=>validIds.has(id)))].slice(0,3);
+  const partySet=new Set(g.party);
+  g.reserve=[...new Set((g.reserve||[]).filter(id=>validIds.has(id)&&!partySet.has(id)))].slice(0,3);
+  if(!Array.isArray(g.discovered))g.discovered=[];
+  g.discovered=[...new Set([...g.discovered.filter(id=>MONSTERS[id]),...g.monsters.map(m=>m.species)])];
+
+  if(!Array.isArray(g.bossRecipes))g.bossRecipes=[];
+
+  // 旧5地域版を完全制覇済みなら、追加地域で進行を後退させない。
+  if(fromVersion<=4 && (g.won || Number(g.bossesDefeated)>=5)){
+    g.bossesDefeated=ZONES.length;
+    g.bossRecipes=[...BOSS_SPECIES];
+    g.won=true;
+  }else{
+    g.bossesDefeated=clamp(Number(g.bossesDefeated)||0,0,ZONES.length);
+    const clearedBosses=ZONES
+      .slice(0,g.bossesDefeated)
+      .map(z=>z.boss);
+
+    g.bossRecipes=[
+      ...new Set([
+        ...g.bossRecipes.filter(id=>BOSS_SPECIES.has(id)),
+        ...clearedBosses.filter(id=>BOSS_SPECIES.has(id))
+      ])
+    ];
+  }
+
+  if(!Array.isArray(g.storySeen))g.storySeen=[];
+  if(fromVersion<6)g.storySeen=migratedStorySeen(g);
+  else g.storySeen=[...new Set(g.storySeen.filter(k=>STORY_SCENES[k]))];
+
+  g.saveVersion=SAVE_VERSION;
+  return g;
+}
 function save(){
   if(!game)return;
+  game.saveVersion=SAVE_VERSION;
   localStorage.setItem("monster_legacy_rpg_save",JSON.stringify(game));
 }
 function load(){
   const x=localStorage.getItem("monster_legacy_rpg_save");
   if(!x)return false;
-  try{
-    game=JSON.parse(x);
-    game.monsters=(game.monsters||[]).map(m=>{
-      if(typeof m.plus!=="number")m.plus=0;
-      if(!m.breedPts)m.breedPts={hp:0,atk:0,def:0,mag:0,spd:0};
-      return m;
-    });
-    return true;
-  }catch(e){return false}
+  try{game=migrate(JSON.parse(x));return true}catch(e){return false}
 }
 function erase(){
   localStorage.removeItem("monster_legacy_rpg_save");
@@ -326,29 +886,64 @@ function erase(){
 }
 function byUid(id){return game.monsters.find(m=>m.uid===id)}
 function partyMons(){return game.party.map(byUid).filter(Boolean)}
-function ranchMons(){return game.monsters.filter(m=>!game.party.includes(m.uid))}
+function reserveMons(){return (game.reserve||[]).map(byUid).filter(Boolean)}
+function ranchMons(){
+  const active=new Set([...(game.party||[]),...(game.reserve||[])]);
+  return game.monsters.filter(m=>!active.has(m.uid));
+}
+function placeOwnedMonster(id){
+  if(game.party.length<3){
+    if(!game.party.includes(id))game.party.push(id);
+    return "party";
+  }
+  if((game.reserve||[]).length<3){
+    if(!game.reserve.includes(id))game.reserve.push(id);
+    return "reserve";
+  }
+  return "ranch";
+}
+function bossRecipeUnlocked(species){
+  return !!game?.bossRecipes?.includes(species);
+}
+function unlockBossRecipe(species){
+  if(!BOSS_SPECIES.has(species))return false;
+  if(!Array.isArray(game.bossRecipes))game.bossRecipes=[];
+  if(game.bossRecipes.includes(species))return false;
+
+  game.bossRecipes.push(species);
+
+  const r=BOSS_BREEDS.find(x=>x.species===species);
+  if(r){
+    addLog(
+      `撃破報酬：${MONSTERS[species].name}の配合レシピを解禁！ `+
+      `${MONSTERS[r.pair[0]].name} × ${MONSTERS[r.pair[1]].name}`
+    );
+  }
+  return true;
+}
 function addLog(t){game.log.unshift(t);game.log=game.log.slice(0,20)}
 
 function startGame(starter){
   const name=(document.getElementById("playerName").value||"旅人").trim().slice(0,12);
   game=defaultGame();game.started=true;game.name=name;
   const m=newMonster(starter,5,{nature:"honest"});
-  game.monsters.push(m);game.party=[m.uid];
+  game.monsters.push(m);game.party=[m.uid];discoverSpecies(starter);
   addLog(`${MONSTERS[starter].name}が最初の仲間になった。`);
-  save();currentView="home";render();
+  save();currentView="home";playStory("prologue");
 }
 
-function nav(v){ if(battle)return; currentView=v; render(); }
+function nav(v){ if(battle||storyState)return; currentView=v; render(); }
 function render(){
   if(!game){load()||(game=defaultGame())}
   const app=document.getElementById("app");
   if(!game.started){app.innerHTML=renderTitle();return}
+  if(storyState){app.innerHTML=renderHeader()+renderStory();return}
   app.innerHTML=renderHeader()+(battle?renderBattle():renderView())+renderNav();
 }
 function renderTitle(){
   return `<div class="title">
     <h1>魔物継承記</h1>
-    <p>魔物を仲間にし、育て、配合し、世代を重ねて魔王を討て。</p>
+    <p>魔物を仲間にし、育て、血脈を継ぎ、魔王の誕生に隠された真実へ辿り着け。</p>
   </div>
   <div class="panel">
     <h2>冒険者名</h2>
@@ -368,7 +963,7 @@ function starterCard(id,desc){
   return `<div class="card"><h3>${d.name}</h3><div class="small">${FAMILIES[d.family]} / ${d.rank}ランク</div><p>${desc}</p><button class="primary" onclick="startGame('${id}')">この魔物で始める</button></div>`;
 }
 function renderHeader(){
-  return `<header><div><div class="logo">魔物継承記 <span class="small">v0.4.0</span></div><div class="small">${game.name} / 魔王軍撃破 ${game.bossesDefeated}/5</div></div>
+  return `<header><div><div class="logo">魔物継承記 <span class="small">v1.0.0</span></div><div class="small">${game.name} / 魔王軍撃破 ${game.bossesDefeated}/${ZONES.length}</div></div>
   <div class="small">G ${game.gold}　薬 ${game.potions}　餌 ${game.scoutBait}</div></header>`;
 }
 function renderNav(){
@@ -388,7 +983,7 @@ function renderView(){
   return renderHome();
 }
 function renderHome(){
-  const p=partyMons();
+  const p=partyMons(),r=reserveMons();
   return `<div class="panel">
     <h2>${game.won?"世界に平和が戻った":"王都・魔物使いの宿"}</h2>
     <p>${game.won?"魔王は倒れた。しかし、未知の配合と魔物はまだ残っている。":"魔王ヴァルガスを倒すため、各地の魔王軍を破り魔王領を目指せ。"}</p>
@@ -398,7 +993,12 @@ function renderHome(){
       <button onclick="buyBait()">魔物の好物を買う（60G）</button>
     </div>
   </div>
-  <div class="panel"><h2>パーティ</h2>${p.length?p.map((m,i)=>monsterCard(m,i===0)).join(""):"仲間がいない"}</div>
+  <div class="panel">
+    <h3>現在の目的</h3>
+    <p>${currentObjective()}</p>
+  </div>
+  <div class="panel"><h2>戦闘パーティ ${p.length}/3</h2>${p.length?p.map((m,i)=>monsterCard(m,i===0)).join(""):"仲間がいない"}</div>
+  <div class="panel"><h2>控え ${r.length}/3</h2>${r.length?r.map(m=>monsterCard(m,false)).join(""):"控えはいません"}</div>
   <div class="panel"><h2>最近の出来事</h2><div class="log">${game.log.slice(0,8).join("\n")}</div></div>`;
 }
 function rest(){
@@ -411,7 +1011,7 @@ function buyBait(){if(game.gold<60)return alert("ゴールドが足りません"
 function monsterCard(m,active=false){
   const d=MONSTERS[m.species],s=calcStats(m),n=NATURES[m.nature];
   return `<div class="card ${active?"active":""}">
-    <div class="statline"><b>${displayMonster(m)}</b><span>${FAMILIES[d.family]}</span></div>
+    <div class="statline"><b>${displayMonster(m)}</b><span>${FAMILIES[d.family]} / ${ELEMENTS[d.element]||"無"}</span></div>
     <div class="small">性格：${n.name}　特性：${m.traits.map(traitName).join("・")}　配合P ${totalBreedPts(m)}/10</div>
     <div class="small notice">【${bloodlineTitle(m.plus)}】血統 +${m.plus||0} / 全能力 +${(m.plus||0)*2}%</div>
     <div class="statline"><span>HP ${m.hp}/${s.hp}</span><span>MP ${m.mp}/${s.mp}</span></div>
@@ -431,7 +1031,7 @@ function renderExplore(){
   return `<div class="panel">
     <h2>育成訓練場</h2>
     <p class="small">配合直後のLv.1育成用。先頭モンスター以下のLvを中心に、低Lvでは安全な訓練相手が出現します。</p>
-    <p>現在の基準Lv：<b>${trainLv}</b>　経験値：<b>2.2倍</b>　訓練上限Lv：<b>${Math.min(40,8+game.bossesDefeated*8)}</b>　獲得G：半分</p>
+    <p>現在の基準Lv：<b>${trainLv}</b>　経験値：<b>2.2倍</b>　訓練上限Lv：<b>${Math.min(64,8+game.bossesDefeated*8)}</b>　獲得G：半分</p>
     <p class="good">訓練場では全滅してもゴールドを失いません。スカウトはできません。</p>
 
     <div class="actions">
@@ -462,8 +1062,10 @@ function renderExplore(){
     const prog=game.zoneProgress[z.id]||0;
     return `<div class="card">
       <h3>${open?z.name:"？？？"}</h3>
+      ${open?`<div class="small notice">第${z.unlock+1}章　${STORY_CHAPTERS[z.id]||""}</div>`:""}
       <div class="small">${open?z.desc:"魔王軍を倒すと開放"}</div>
       ${open?`<p>危険度 ${Math.min(prog,5)}/5</p>
+      <p class="small">地域図鑑：${z.wild.filter(id=>(game.discovered||[]).includes(id)).length}/${z.wild.length}種発見</p>
       <div class="actions"><button class="primary" onclick="explore('${z.id}')">探索する</button>
       <button class="warn" ${prog<5?"disabled":""} onclick="challengeBoss('${z.id}')">支配者に挑む</button></div>`:""}
     </div>`;
@@ -480,10 +1082,28 @@ function getLeadAlive(){
 }
 function explore(zoneId){
   if(!canBattle()){alert("戦える仲間がいません。宿で回復してください。");return}
-  const z=ZONES.find(x=>x.id===zoneId);selectedZone=zoneId;
+  const z=ZONES.find(x=>x.id===zoneId);
+  if(!z)return;
+
+  const introKey=`${zoneId}_intro`;
+  if(!hasSeenStory(introKey)){
+    playStory(introKey,()=>doExplore(zoneId));
+    return;
+  }
+  doExplore(zoneId);
+}
+
+function doExplore(zoneId){
+  if(!canBattle()){alert("戦える仲間がいません。宿で回復してください。");return}
+  const z=ZONES.find(x=>x.id===zoneId);if(!z)return;
+  selectedZone=zoneId;
   const sp=pick(z.wild), lv=rint(z.levels[0],z.levels[1]);
   game.zoneProgress[zoneId]=Math.min(5,(game.zoneProgress[zoneId]||0)+1);
-  const n=pick([1,2,2,3]);startBattle([newMonster(sp,Math.max(1,lv-(n-1))),...Array.from({length:n-1},()=>newMonster(pick(z.wild),Math.max(1,rint(z.levels[0],z.levels[1])-(n-1))))],false,z,{enemyDamageMult:n>1?.85:1});
+  const n=pick([1,2,2,3]);
+  startBattle(
+    [newMonster(sp,Math.max(1,lv-(n-1))),...Array.from({length:n-1},()=>newMonster(pick(z.wild),Math.max(1,rint(z.levels[0],z.levels[1])-(n-1))))],
+    false,z,{enemyDamageMult:n>1?.85:1}
+  );
 }
 function trainExplore(){
   if(!canBattle()){alert("戦える仲間がいません。宿で回復してください。");return}
@@ -495,7 +1115,7 @@ function trainExplore(){
     ? ["slime","wolf","sparrow","fish","sprout","aquaSlime"]
     : ["wolf","sprout","raven","aquaSlime","hatchling","skull","golem"];
 
-  const trainingCap=Math.min(40,8+game.bossesDefeated*8);
+  const trainingCap=Math.min(64,8+game.bossesDefeated*8);
   const lv=clamp(lead.level-1+rint(0,1),1,trainingCap);
 
   const zone={id:"training",name:"育成訓練場"};
@@ -509,14 +1129,16 @@ function trainExplore(){
 }
 
 function autoTrainingPool(level){
-  if(level<=3)return ["slime","sparrow","sprout"];
-  if(level<=16)return ["slime","wolf","sparrow","fish","sprout","aquaSlime"];
-  return ["wolf","sprout","raven","aquaSlime","hatchling","skull","golem"];
+  if(level<=3)return ["slime","sparrow","thornVine","ghost","clayDoll"];
+  if(level<=16)return ["slime","wolf","sparrow","fish","sprout","aquaSlime","emberSlime","healingHerb","mudCrab","stoneCondor"];
+  if(level<=32)return ["wolf","sprout","raven","aquaSlime","hatchling","skull","golem","sandLynx","mudDrake","fireImp","windGear","mummy","reefSerpent"];
+  if(level<=48)return ["flameHound","hellHound","deathKnight","stoneDemon","tidalDrake","sacredOwl","stormRay","kingSlime","armorSlime"];
+  return ["moonWolf","dragonWolf","luminousDragon","crystalCore","saintWraith","nightPhoenix","leviathan","worldTreeSpirit","flameMachine"];
 }
 
 function autoTrainingEnemy(){
   const lead=partyMons()[0]||getLeadAlive();
-  const trainingCap=Math.min(40,8+game.bossesDefeated*8);
+  const trainingCap=Math.min(64,8+game.bossesDefeated*8);
   const level=clamp((lead?.level||1)-1+rint(0,1),1,trainingCap);
   return newMonster(pick(autoTrainingPool(lead?.level||1)),level);
 }
@@ -669,15 +1291,10 @@ function runOneAutoTrainingBattle(){
   if(win){
     const exp=Math.round(enemy.level*14*2.2);
 
-    partyMons().forEach((m,i)=>{
-      gainExp(
-        m,
-        Math.round(exp*(i===0?1:.75))
-      );
-    });
+    const shared=grantSharedExp(exp,false);
 
     fullHeal();
-    return {win:true,exp};
+    return {win:true,exp,totalAwarded:shared.totalAwarded};
   }
 
   fullHeal();
@@ -696,10 +1313,7 @@ async function startAutoTraining(count){
     return;
   }
 
-  const before=partyMons().map(m=>({
-    uid:m.uid,
-    level:m.level
-  }));
+  const before=new Map(game.monsters.map(m=>[m.uid,m.level]));
 
   autoTraining=true;
   render();
@@ -707,12 +1321,13 @@ async function startAutoTraining(count){
   let wins=0;
   let losses=0;
   let totalExp=0;
+  let totalDistributedExp=0;
   let executed=0;
 
   const chunk=count>=1000?25:count>=100?20:10;
 
   for(let i=0;i<count;i++){
-    if(partyMons().every(m=>m.level>=MAX_LEVEL)){
+    if(game.monsters.length&&game.monsters.every(m=>m.level>=MAX_LEVEL)){
       break;
     }
 
@@ -722,6 +1337,7 @@ async function startAutoTraining(count){
     if(result.win){
       wins++;
       totalExp+=result.exp;
+      totalDistributedExp+=result.totalAwarded||0;
     }else{
       losses++;
     }
@@ -735,13 +1351,25 @@ async function startAutoTraining(count){
     }
   }
 
-  const changes=partyMons().map(m=>{
-    const b=before.find(x=>x.uid===m.uid);
-    return `${MONSTERS[m.species].name}: Lv.${b?.level??m.level} → Lv.${m.level}`;
-  });
+  const partyChanges=partyMons().map(m=>
+    `${MONSTERS[m.species].name}: Lv.${before.get(m.uid)??m.level} → Lv.${m.level}`
+  );
+  const reserveChanges=reserveMons().map(m=>
+    `${MONSTERS[m.species].name}: Lv.${before.get(m.uid)??m.level} → Lv.${m.level}`
+  );
+  const ranchLevelUps=ranchMons().reduce(
+    (sum,m)=>sum+Math.max(0,m.level-(before.get(m.uid)??m.level)),
+    0
+  );
+
+  const changes=[
+    `前衛：${partyChanges.join(" / ")||"なし"}`,
+    `控え：${reserveChanges.join(" / ")||"なし"}`,
+    `牧場：${ranchMons().length}体（合計Lv+${ranchLevelUps}）`
+  ];
 
   addLog(
-    `高速特訓完了：${wins}勝${losses}敗 / 獲得EXP ${totalExp} / ${changes.join("、")}`
+    `高速特訓完了：${wins}勝${losses}敗 / 基準EXP ${totalExp} / 前衛100%・控え75%・牧場25%`
   );
 
   autoTraining=false;
@@ -755,7 +1383,9 @@ async function startAutoTraining(count){
       `実行: ${executed}回\n`+
       `勝利: ${wins}\n`+
       `敗北: ${losses}\n`+
-      `獲得EXP: ${totalExp}\n\n`+
+      `基準EXP: ${totalExp}\n`+
+      `配布EXP合計: ${totalDistributedExp}\n`+
+      `前衛100% / 控え75% / 牧場25%\n\n`+
       changes.join("\n")
     );
   },0);
@@ -763,19 +1393,73 @@ async function startAutoTraining(count){
 
 function challengeBoss(zoneId){
   if(!canBattle())return alert("戦える仲間がいません。");
-  const z=ZONES.find(x=>x.id===zoneId);
-  const esc=Math.min(2,partyMons().filter(m=>m.hp>0).length-1);startBattle([newMonster(z.boss,z.bossLevel,{nature:"bold",traits:MONSTERS[z.boss].traits.slice(0,2)}),...Array.from({length:esc},()=>newMonster(pick(z.wild),Math.max(1,z.bossLevel-6)))],true,z);
+  const z=ZONES.find(x=>x.id===zoneId);if(!z)return;
+
+  const beforeKey=`${zoneId}_bossBefore`;
+  if(!hasSeenStory(beforeKey)){
+    playStory(beforeKey,()=>doChallengeBoss(zoneId));
+    return;
+  }
+  doChallengeBoss(zoneId);
+}
+
+function doChallengeBoss(zoneId){
+  if(!canBattle())return alert("戦える仲間がいません。");
+  const z=ZONES.find(x=>x.id===zoneId);if(!z)return;
+  const esc=Math.min(2,partyMons().filter(m=>m.hp>0).length-1);
+  startBattle(
+    [newMonster(z.boss,z.bossLevel,{nature:"bold",traits:MONSTERS[z.boss].traits.slice(0,2),hpMult:z.hpMult||1}),
+     ...Array.from({length:esc},()=>newMonster(pick(z.wild),Math.max(1,z.bossLevel-6)))],
+    true,z,{enemyDamageMult:z.dmgMult||1}
+  );
 }
 function foes(){return battle.enemies.filter(e=>e.hp>0&&!e.caught)}
 function allies(){return partyMons().filter(m=>m.hp>0)}
 function cmdActor(){return allies().find(m=>!battle.cmds.some(c=>c.uid===m.uid))}
 function battleLead(){return cmdActor()||partyMons()[0]}
+// ===== 作戦指示（v0.8.0） =====
+const TACTICS={
+  manual:{name:"めいれい",desc:"自分で指示する"},
+  rush:{name:"ガンガンいこうぜ",desc:"最大火力で弱った敵から攻める"},
+  safe:{name:"いのちだいじに",desc:"HP50%未満で回復・防御を優先"},
+  saver:{name:"MPだいじに",desc:"通常攻撃中心。弱点を突ける時だけ技を使う"}
+};
+function setTactic(k){if(!battle||!TACTICS[k])return;battle.tactic=k;game.tactic=k;save();render()}
+function foeScore(me,sk,foe){const a=effectiveStats(me);const st=sk.type==="magic"?a.mag:a.atk;return (sk.power+st*.55)*elemMultiplier(sk.element,foe)}
+function autoAction(me){
+  const mode=battle.tactic||"manual",fs=foes(),target=fs.slice().sort((a,b)=>a.hp-b.hp)[0],s=calcStats(me),rate=me.hp/s.hp;
+  const heal=me.skills.find(k=>SKILLS[k].type==="heal"&&SKILLS[k].mp<=me.mp);
+  const th=mode==="safe"?.5:mode==="saver"?.35:.25;
+  if(rate<th){
+    if(heal)return {kind:"skill",skill:heal,t:null};
+    if(game.potions>0)return {kind:"potion",t:null};
+    if(mode==="safe")return {kind:"defend",t:null};
+  }
+  const atk={kind:"attack",t:target.uid};
+  const dmg=me.skills.filter(k=>["physical","magic"].includes(SKILLS[k].type)&&SKILLS[k].mp<=me.mp).map(k=>({k,sc:foeScore(me,SKILLS[k],target)})).sort((a,b)=>b.sc-a.sc);
+  const base=foeScore(me,{power:28,type:"physical",element:"none"},target);
+  if(mode==="rush"){
+    if(battle.turn===1&&me.skills.includes("roar")&&me.mp>=SKILLS.roar.mp&&!(me.buffTurns?.atk>0))return {kind:"skill",skill:"roar",t:null};
+    return dmg[0]&&dmg[0].sc>base?{kind:"skill",skill:dmg[0].k,t:target.uid}:atk;
+  }
+  if(mode==="saver"){
+    const w=dmg.find(d=>elemMultiplier(SKILLS[d.k].element,target)>=1.3&&me.mp>=s.mp*.5);
+    return w?{kind:"skill",skill:w.k,t:target.uid}:atk;
+  }
+  return dmg[0]&&dmg[0].sc>base*1.1&&me.mp>=s.mp*.3?{kind:"skill",skill:dmg[0].k,t:target.uid}:atk;
+}
+function runTactic(){
+  if(!battle||battle.locked||battle.pend||(battle.tactic||"manual")==="manual")return;
+  let a;while((a=cmdActor())){battle.cmds.push({bait:false,...autoAction(a),uid:a.uid})}
+  resolveRound();
+}
 function startBattle(enemy,isBoss,zone,options={}){
   partyMons().forEach(m=>{m.status=null;m.statusTurns=0;m.guard=false;m.buffs={atk:0,def:0,mag:0,spd:0};m.buffTurns={atk:0,def:0,mag:0,spd:0}});
   const enemies=Array.isArray(enemy)?enemy:[enemy];
+  enemies.forEach(e=>discoverSpecies(e.species));
   battle={enemies,isBoss,zoneId:zone.id,turn:1,cmds:[],pend:null,training:!!options.training,
     expMult:options.expMult||1,goldMult:options.goldMult||1,enemyDamageMult:options.enemyDamageMult||1,enemyHealUsed:0,
-    log:[`${options.training?"訓練相手":isBoss?"強敵":"野生"}の ${enemies.map(displayMonster).join("・")} が現れた！`],locked:false};
+    log:[`${options.training?"訓練相手":isBoss?"強敵":"野生"}の ${enemies.map(displayMonster).join("・")} が現れた！`],locked:false,tactic:TACTICS[game.tactic]?game.tactic:"manual"};
   render();
 }
 function battleLog(t){battle.log.unshift(t);battle.log=battle.log.slice(0,12)}
@@ -786,9 +1470,28 @@ function effectiveStats(m){
   if(m.traits.includes("quick")&&turn<=3)mult.spd*=1.2;
   return {...s,atk:Math.round(s.atk*mult.atk),def:Math.round(s.def*mult.def),mag:Math.round(s.mag*mult.mag),spd:Math.round(s.spd*mult.spd)};
 }
+// ===== 属性相性の見える化（v0.9.0） =====
+const ELEM_ICON={none:"⚪",fire:"🔥",water:"💧",wind:"🌀",earth:"⛰️",light:"✨",dark:"🌑"};
+function elemTag(e){return `${ELEM_ICON[e]||""}${ELEMENTS[e]||""}`}
+function weakElems(sp){const t=MONSTERS[sp].element;return t==="none"?[]:Object.keys(ELEMENT_ADV).filter(e=>ELEMENT_ADV[e]===t)}
+function resistElems(sp){const t=MONSTERS[sp].element;const r=ELEMENT_ADV[t];return t==="none"||!r||ELEMENT_ADV[r]===t?[]:[r]}
+function affMark(skill,foe){
+  if(!skill||!["physical","magic"].includes(skill.type))return "";
+  const m=elemMultiplier(skill.element,foe);
+  return m>=1.3?`<b style="color:#7fe08a">▲弱点</b>`:m<=.78?`<b style="color:#f08a8a">▽耐性</b>`:"";
+}
+function affMarkAll(skill){
+  const fs=foes();if(!fs.length||!skill||!["physical","magic"].includes(skill.type))return "";
+  const ms=fs.map(f=>elemMultiplier(skill.element,f));
+  if(ms.some(m=>m>=1.3))return `<b style="color:#7fe08a">▲</b>`;
+  if(ms.every(m=>m<=.78))return `<b style="color:#f08a8a">▽</b>`;
+  return "";
+}
+function affinityChart(){return `<details style="margin:6px 0 10px"><summary class="small">属性・状態異常</summary><div class="small" style="padding:6px 0">🔥火 → 🌀風 → ⛰️土 → 💧水 → 🔥火　／　✨光 ⇄ 🌑闇<br>有利 ×1.35　不利 ×0.75<br><br>毒：4T・最大HP10%/T　睡眠：2T・行動不能　麻痺：3T・40%で行動不能<br>ボス本体：状態異常成功率45%減・持続-1T</div></details>`}
 function miniCard(m,isFoe,cls=""){
   const s=calcStats(m),d=MONSTERS[m.species];
-  return `<div class="card mini ${cls}"><div>${FAM_ICON[d.family]} <b>${d.name}</b></div><div class="small">Lv.${m.level} ${statusText(m)}${m.guard?" 🛡":""}</div><div class="small">HP ${Math.max(0,m.hp)}/${s.hp}</div><div class="bar ${isFoe?"enemy":""}"><i style="width:${100*clamp(m.hp,0,s.hp)/s.hp}%"></i></div>${isFoe?"":`<div class="bar mp"><i style="width:${100*m.mp/s.mp}%"></i></div>`}</div>`;
+  const bossRes=isFoe&&isMainBoss(m)?`<div class="small notice">状態耐性：強</div>`:"";
+  return `<div class="card mini ${cls}"><div>${FAM_ICON[d.family]} <b>${d.name}</b> <span class="small">${elemTag(d.element)}</span></div><div class="small">Lv.${m.level} ${statusText(m)}${m.guard?" 🛡":""}</div>${bossRes}${isFoe&&d.element!=="none"?`<div class="small">弱点：${weakElems(m.species).map(elemTag).join("")||"なし"}　耐性：${resistElems(m.species).map(elemTag).join("")||"なし"}</div>`:""}<div class="small">HP ${Math.max(0,m.hp)}/${s.hp}</div><div class="bar ${isFoe?"enemy":""}"><i style="width:${100*clamp(m.hp,0,s.hp)/s.hp}%"></i></div>${isFoe?"":`<div class="bar mp"><i style="width:${100*m.mp/s.mp}%"></i></div>`}</div>`;
 }
 function renderBattle(){
   const cur=cmdActor();
@@ -800,15 +1503,20 @@ function renderBattle(){
   </div>
   <div class="panel"><h3>戦闘ログ</h3><div class="log">${battle.log.join("\n")}</div></div>`;
 }
-function statusText(m){return m.status?({poison:"毒",sleep:"睡眠",paralyze:"麻痺"}[m.status]||m.status):"正常"}
+function statusText(m){
+  if(!m.status)return "正常";
+  const name=STATUS_RULES[m.status]?.name||m.status;
+  return `${name}${m.statusTurns>0?`(${m.statusTurns})`:""}`;
+}
 function renderBattleActions(me){
   const nm=MONSTERS[me.species].name;
   if(battle.pend){const p=battle.pend;
-    return `<p class="notice">${nm}：対象を選んでください</p><div class="actions">${foes().map(e=>`<button onclick="pickTarget('${e.uid}')">${MONSTERS[e.species].name} Lv.${e.level}${p.kind==="scout"?` ${Math.round(scoutChance(p.bait,e,me)*100)}%`:""}</button>`).join("")}<button onclick="cancelPend()">戻る</button></div>`;}
+    return `<p class="notice">${nm}：対象を選んでください</p><div class="actions">${foes().map(e=>`<button onclick="pickTarget('${e.uid}')">${MONSTERS[e.species].name} Lv.${e.level}${p.kind==="skill"?` ${affMark(SKILLS[p.skill],e)}`:""}${p.kind==="scout"?` ${Math.round(scoutChance(p.bait,e,me)*100)}%`:""}</button>`).join("")}<button onclick="cancelPend()">戻る</button></div>`;}
   const done=battle.cmds.length,total=allies().length+done;
-  return `<p class="notice">${nm}の行動（${done+1}/${total}）</p><div class="actions">
+  const tb=done===0?`<div class="actions" style="margin-bottom:6px">${Object.entries(TACTICS).map(([k,t])=>`<button onclick="setTactic('${k}')" title="${t.desc}" style="${(battle.tactic||'manual')===k?'outline:2px solid #6cf':''}">${t.name}</button>`).join("")}</div>${(battle.tactic||'manual')!=="manual"?`<button class="primary" onclick="runTactic()">作戦どおりに戦う（${TACTICS[battle.tactic].name}）</button>`:""}`:"";
+  return `${tb}${done===0?affinityChart():""}<p class="notice">${nm}の行動（${done+1}/${total}）</p><div class="actions">
     <button class="primary" onclick="chooseAct('attack')">たたかう</button>
-    ${me.skills.map(sk=>`<button onclick="chooseAct('skill','${sk}')" ${me.mp<SKILLS[sk].mp?"disabled":""}>${skillName(sk)} ${SKILLS[sk].mp}MP</button>`).join("")}
+    ${me.skills.map(sk=>`<button onclick="chooseAct('skill','${sk}')" ${me.mp<SKILLS[sk].mp?"disabled":""}>${ELEM_ICON[SKILLS[sk].element]||""}${skillName(sk)} ${SKILLS[sk].mp}MP ${affMarkAll(SKILLS[sk])}</button>`).join("")}
     <button onclick="chooseAct('defend')">防御</button>
     <button onclick="chooseAct('potion')" ${game.potions<=0?"disabled":""}>薬草 (${game.potions})</button>
     ${battle.isBoss?"":battle.training?`<button onclick="flee()">訓練をやめる</button>`:`<button class="warn" onclick="chooseAct('scout')">スカウト</button><button onclick="chooseAct('scout',null,true)" ${game.scoutBait<=0?"disabled":""}>好物+スカウト (${game.scoutBait})</button><button onclick="flee()">にげる</button>`}
@@ -852,11 +1560,16 @@ function resolveRound(){
   battle.turn++;battle.cmds=[];battle.locked=false;save();render();
 }
 function canAct(m){
-  if(m.status==="sleep"){
-    if(Math.random()<.4){m.status=null;m.statusTurns=0;battleLog(`${MONSTERS[m.species].name}は目を覚ました！`);return true}
-    battleLog(`${MONSTERS[m.species].name}は眠っている。`);return false;
+  if(m.status==="sleep"&&m.statusTurns>0){
+    battleLog(`${MONSTERS[m.species].name}は眠っている。`);
+    return false;
   }
-  if(m.status==="paralyze"&&Math.random()<.3){battleLog(`${MONSTERS[m.species].name}は麻痺して動けない！`);return false}
+
+  if(m.status==="paralyze"&&m.statusTurns>0&&Math.random()<.4){
+    battleLog(`${MONSTERS[m.species].name}は麻痺して動けない！`);
+    return false;
+  }
+
   return true;
 }
 function performAction(side,actor,target,act){
@@ -865,10 +1578,23 @@ function performAction(side,actor,target,act){
   if(act.kind==="defend"){battleLog(`${MONSTERS[actor.species].name}は身を守っている。`);return}
   if(act.kind==="scout"){doScout(actor,target,act.bait);return}
   if(act.kind==="attack"){dealDamage(actor,target,{name:"通常攻撃",type:"physical",power:28,mp:0,element:"none"});return}
-  if(act.kind==="skill"){const sk=SKILLS[act.skill];actor.mp-=sk.mp;applySkill(actor,target,sk)}
+  if(act.kind==="skill"){let sk=SKILLS[act.skill];if(act.boost&&act.boost!==1)sk={...sk,power:Math.round(sk.power*act.boost)};actor.mp-=sk.mp;applySkill(actor,target,sk)}
 }
 function chooseEnemyAction(en){
   const hpRate=en.hp/calcStats(en).hp;
+
+  // ボス専用行動：HP50%以下でフェーズ変化、専用技の頻度と威力が上昇
+  const bossMove=battle?.isBoss&&!battle.training?BOSS_MOVES[en.species]:null;
+  if(bossMove){
+    if(hpRate<=.5&&!en.phase2){
+      en.phase2=true;
+      en.buffs.atk=.3;en.buffTurns.atk=4;en.buffs.mag=.3;en.buffTurns.mag=4;
+      battleLog(`${MONSTERS[en.species].name}：${BOSS_PHASE_TEXT[en.species]}`);
+    }
+    if(Math.random()<(en.phase2?.5:.3)){
+      return {kind:"skill",skill:bossMove,boost:en.phase2?1.2:1};
+    }
+  }
 
   const available=en.skills.filter(k=>{
     if(SKILLS[k].mp>en.mp)return false;
@@ -920,17 +1646,24 @@ function applySkill(actor,target,sk){
     actor.buffs[sk.stat]=sk.amount;actor.buffTurns[sk.stat]=sk.turns;battleLog(`${MONSTERS[actor.species].name}の${sk.name}！ ${sk.stat==="atk"?"攻撃":"能力"}が上がった。`);return;
   }
   if(sk.type==="status"){
-    const resist=target.traits.includes("root")?.75:1;
-    if(Math.random()<sk.chance*resist){target.status=sk.status;target.statusTurns=3;battleLog(`${MONSTERS[actor.species].name}の${sk.name}！ ${MONSTERS[target.species].name}は${statusText(target)}になった。`)}
-    else battleLog(`${sk.name}は効かなかった。`);
+    tryInflictStatus(actor,target,sk.status,sk.chance,sk.name);
     return;
   }
+  const before=target.hp;
   dealDamage(actor,target,sk);
+  const dealt=before-target.hp;
+  if(sk.drain&&dealt>0){
+    const mh=calcStats(actor).hp,h=Math.min(mh-actor.hp,Math.round(dealt*sk.drain));
+    if(h>0){actor.hp+=h;battleLog(`${MONSTERS[actor.species].name}は生命力を吸い取った！ HPが${h}回復。`)}
+  }
+  if(sk.inflict&&target.hp>0&&!target.status){
+    tryInflictStatus(actor,target,sk.inflict.status,sk.inflict.chance);
+  }
 }
 function elemMultiplier(element,target){
   if(element==="none")return 1;
-  const targetSkills=MONSTERS[target.species].skills.map(k=>SKILLS[k]?.element);
-  let targetElem=targetSkills.find(x=>x&&x!=="none")||"none";
+  const targetElem=MONSTERS[target.species]?.element||"none";
+  if(targetElem==="none")return 1;
   if(ELEMENT_ADV[element]===targetElem)return 1.35;
   if(ELEMENT_ADV[targetElem]===element)return .75;
   return 1;
@@ -962,11 +1695,27 @@ function dealDamage(actor,target,sk){
 function endTurnEffects(m){
   if(m.hp<=0)return;
   const s=calcStats(m);
-  if(m.status==="poison"){
-    const dmg=Math.max(1,Math.floor(s.hp*.08));m.hp=Math.max(0,m.hp-dmg);battleLog(`${MONSTERS[m.species].name}は毒で${dmg}ダメージ。`);
+
+  if(m.status==="poison"&&m.statusTurns>0){
+    const dmg=Math.max(1,Math.floor(s.hp*.10));
+    m.hp=Math.max(0,m.hp-dmg);
+    battleLog(`${MONSTERS[m.species].name}は毒で${dmg}ダメージ。`);
   }
-  if(m.traits.includes("regen")&&m.hp>0){const h=Math.max(1,Math.floor(s.hp*.05));m.hp=Math.min(s.hp,m.hp+h)}
-  if(m.traits.includes("mana")){const h=Math.max(1,Math.floor(s.mp*.05));m.mp=Math.min(s.mp,m.mp+h)}
+
+  if(m.traits.includes("regen")&&m.hp>0){
+    const h=Math.max(1,Math.floor(s.hp*.05));
+    m.hp=Math.min(s.hp,m.hp+h);
+  }
+
+  if(m.traits.includes("mana")&&m.hp>0){
+    const h=Math.max(1,Math.floor(s.mp*.05));
+    m.mp=Math.min(s.mp,m.mp+h);
+  }
+
+  if(m.hp>0&&m.status&&m.statusTurns>0){
+    m.statusTurns--;
+    if(m.statusTurns<=0)clearStatus(m,true);
+  }
 }
 function tickBuffs(m){for(const k of Object.keys(m.buffTurns||{})) if(m.buffTurns[k]>0)m.buffTurns[k]--}
 
@@ -985,8 +1734,10 @@ function doScout(me,en,bait){
   if(bait)game.scoutBait=Math.max(0,game.scoutBait-1);
   if(Math.random()<chance){
     const s=calcStats(en);en.hp=s.hp;en.mp=s.mp;en.status=null;en.caught=true;
-    game.monsters.push(en);if(game.party.length<3)game.party.push(en.uid);
-    addLog(`${MONSTERS[en.species].name}のスカウトに成功した！（成功率${pct}%）`);
+    game.monsters.push(en);discoverSpecies(en.species);
+    const placed=placeOwnedMonster(en.uid);
+    const where=placed==="party"?"戦闘パーティ":placed==="reserve"?"控え":"牧場";
+    addLog(`${MONSTERS[en.species].name}のスカウトに成功した！（成功率${pct}% / ${where}へ）`);
     battleLog(`${MONSTERS[en.species].name}が仲間になった！`);
   }else battleLog(`${MONSTERS[en.species].name}のスカウト失敗……（成功率${pct}%）`);
 }
@@ -1009,6 +1760,7 @@ function gainExp(m,amt){
     m.exp-=xpNeed(m.level);
     m.level++;
     leveled++;
+    syncLearnset(m);
     healMonster(m);
   }
 
@@ -1019,23 +1771,90 @@ function gainExp(m,amt){
 
   return leveled;
 }
+
+function grantSharedExp(baseExp,logLevels=true){
+  const groups=[
+    {key:"party",name:"戦闘パーティ",rate:1.00,mons:partyMons()},
+    {key:"reserve",name:"控え",rate:0.75,mons:reserveMons()},
+    {key:"ranch",name:"牧場",rate:0.25,mons:ranchMons()}
+  ];
+
+  const result={totalAwarded:0,levelUps:{party:[],reserve:[],ranch:[]},awarded:{}};
+
+  for(const g of groups){
+    const each=Math.max(0,Math.round(baseExp*g.rate));
+    result.awarded[g.key]=each;
+
+    for(const m of g.mons){
+      const before=m.level;
+      gainExp(m,each);
+      result.totalAwarded+=each;
+
+      if(m.level>before){
+        result.levelUps[g.key].push({
+          uid:m.uid,
+          species:m.species,
+          from:before,
+          to:m.level
+        });
+      }
+    }
+  }
+
+  if(logLevels){
+    for(const u of result.levelUps.party){
+      addLog(`${MONSTERS[u.species].name}がLv.${u.to}に上がった！`);
+    }
+    for(const u of result.levelUps.reserve){
+      addLog(`控えの${MONSTERS[u.species].name}がLv.${u.to}に上がった！`);
+    }
+    if(result.levelUps.ranch.length){
+      addLog(`牧場で${result.levelUps.ranch.length}体がレベルアップした。`);
+    }
+  }
+
+  return result;
+}
+
 function winBattle(){
   const z=ZONES.find(x=>x.id===battle.zoneId),boss=battle.enemies[0];
   const dead=battle.enemies.filter(e=>!e.caught);
   const bm=e=>battle.isBoss&&e===boss;
   const exp=Math.round(dead.reduce((t,e)=>t+e.level*14*(bm(e)?2.8:1),0)*(battle.expMult||1));
   const gold=Math.round(dead.reduce((t,e)=>t+e.level*8*(bm(e)?3:1),0)*(battle.goldMult||1));
-  allies().forEach((m,i)=>{
-    const before=m.level;gainExp(m,Math.round(exp*(i===0?1:.75)));
-    if(m.level>before)addLog(`${MONSTERS[m.species].name}がLv.${m.level}に上がった！`);
-  });
+  grantSharedExp(exp,true);
   game.gold+=gold;
+
+  let storyKeys=[];
   if(battle.isBoss){
-    if(game.bossesDefeated===z.unlock){game.bossesDefeated++;addLog(`${z.name}の支配者を撃破した！ 新たな地域への道が開いた。`)}
-    if(z.id==="abyss"){game.won=true;addLog("魔王ヴァルガスを討ち、世界に平和が戻った！")}
-  }else if(battle.training)addLog(`訓練を終えた。経験値${exp}、${gold}Gを獲得。`);
-  else addLog(`${dead.length?dead.map(e=>MONSTERS[e.species].name).join("・")+"を倒した。":"スカウトで戦闘終了。"}経験値${exp}、${gold}Gを獲得。`);
-  battle=null;save();currentView="home";render();
+    const firstClear=!!z && game.bossesDefeated===z.unlock;
+
+    if(firstClear){
+      game.bossesDefeated++;
+      addLog(`${z.name}の支配者を撃破した！ 新たな地域への道が開いた。`);
+      storyKeys.push(`${z.id}_bossAfter`);
+    }
+
+    unlockBossRecipe(z.boss);
+
+    if(z.id==="abyss"&&firstClear){
+      game.won=true;
+      addLog("魔王ヴァルガスを討ち、世界に平和が戻った！");
+      storyKeys.push("ending","postgame");
+    }
+  }else if(battle.training){
+    addLog(`訓練を終えた。基準EXP ${exp}（前衛100% / 控え75% / 牧場25%）、${gold}Gを獲得。`);
+  }else{
+    addLog(`${dead.length?dead.map(e=>MONSTERS[e.species].name).join("・")+"を倒した。":"スカウトで戦闘終了。"}基準EXP ${exp}（前衛100% / 控え75% / 牧場25%）、${gold}Gを獲得。`);
+  }
+
+  battle=null;
+  save();
+  currentView="home";
+
+  const unread=storyKeys.filter(k=>!hasSeenStory(k));
+  if(unread.length)playStorySequence(unread,()=>render());
+  else render();
 }
 function loseBattle(){
   if(battle?.training){
@@ -1057,32 +1876,81 @@ function loseBattle(){
 }
 
 function renderParty(){
-  return `<div class="panel"><h2>パーティ ${game.party.length}/3</h2>${partyMons().map((m,i)=>monsterDetail(m,true,i)).join("")||"パーティなし"}</div>
-  <div class="panel"><h2>牧場 ${ranchMons().length}</h2>${ranchMons().map(m=>monsterDetail(m,false)).join("")||"<div class='small'>牧場は空です。</div>"}</div>`;
+  return `<div class="panel">
+    <h2>経験値配分</h2>
+    <p class="small">戦闘勝利時：戦闘パーティ100% / 控え75% / 牧場25%。戦闘不能でも所属枠の経験値を獲得します。</p>
+  </div>
+  <div class="panel"><h2>戦闘パーティ ${game.party.length}/3</h2>${partyMons().map((m,i)=>monsterDetail(m,"party",i)).join("")||"パーティなし"}</div>
+  <div class="panel"><h2>控え ${(game.reserve||[]).length}/3</h2>${reserveMons().map((m,i)=>monsterDetail(m,"reserve",i)).join("")||"<div class='small'>控えはいません。</div>"}</div>
+  <div class="panel"><h2>牧場 ${ranchMons().length}</h2>${ranchMons().map(m=>monsterDetail(m,"ranch")).join("")||"<div class='small'>牧場は空です。</div>"}</div>`;
 }
-function monsterDetail(m,inParty,index=-1){
+function monsterDetail(m,location,index=-1){
   const d=MONSTERS[m.species],s=calcStats(m),n=NATURES[m.nature];
+  const expRate=location==="party"?"100%":location==="reserve"?"75%":"25%";
   return `<div class="card">
-    <div class="statline"><b>${displayMonster(m)}</b><span>${FAMILIES[d.family]}</span></div>
+    <div class="statline"><b>${displayMonster(m)}</b><span>${FAMILIES[d.family]} / ${ELEMENTS[d.element]||"無"}</span></div>
     <div class="small">性格 ${n.name} / 特性 ${m.traits.map(traitName).join("・")}</div>
+    <div class="small good">戦闘EXP：${expRate}</div>
     <div class="notice">【${bloodlineTitle(m.plus)}】血統 +${m.plus||0}　全能力 +${(m.plus||0)*2}%</div>
     <div class="kv"><span>能力</span><span>HP ${s.hp} / MP ${s.mp} / 攻 ${s.atk} / 防 ${s.def} / 魔 ${s.mag} / 速 ${s.spd}</span>
     <span>スキル</span><span>${m.skills.map(skillName).join("・")}</span>
     <span>配合P</span><span>${Object.entries(m.breedPts).filter(x=>x[1]).map(([k,v])=>`${statJP(k)}+${v}`).join(" / ")||"なし"}</span></div>
     <div class="actions">
-      ${inParty?`<button class="slim" onclick="moveParty(${index},-1)">↑</button><button class="slim" onclick="moveParty(${index},1)">↓</button><button class="slim" onclick="toRanch('${m.uid}')">牧場へ</button>`:`<button class="slim primary" onclick="toParty('${m.uid}')" ${game.party.length>=3?"disabled":""}>パーティへ</button>`}
+      ${location==="party"?`
+        <button class="slim" onclick="moveParty(${index},-1)">↑</button>
+        <button class="slim" onclick="moveParty(${index},1)">↓</button>
+        <button class="slim" onclick="toReserve('${m.uid}')" ${(game.reserve||[]).length>=3?"disabled":""}>控えへ</button>
+        <button class="slim" onclick="toRanch('${m.uid}')">牧場へ</button>
+      `:location==="reserve"?`
+        <button class="slim primary" onclick="toParty('${m.uid}')" ${game.party.length>=3?"disabled":""}>パーティへ</button>
+        <button class="slim" onclick="moveReserve(${index},-1)">↑</button>
+        <button class="slim" onclick="moveReserve(${index},1)">↓</button>
+        <button class="slim" onclick="toRanch('${m.uid}')">牧場へ</button>
+      `:`
+        <button class="slim primary" onclick="toParty('${m.uid}')" ${game.party.length>=3?"disabled":""}>パーティへ</button>
+        <button class="slim" onclick="toReserve('${m.uid}')" ${(game.reserve||[]).length>=3?"disabled":""}>控えへ</button>
+      `}
     </div>
   </div>`;
 }
 function statJP(k){return ({hp:"HP",atk:"攻撃",def:"防御",mag:"魔力",spd:"素早さ"})[k]||k}
-function toRanch(id){game.party=game.party.filter(x=>x!==id);save();render()}
-function toParty(id){if(game.party.length>=3)return;game.party.push(id);save();render()}
-function moveParty(i,d){const j=i+d;if(j<0||j>=game.party.length)return;[game.party[i],game.party[j]]=[game.party[j],game.party[i]];save();render()}
+function toRanch(id){
+  game.party=game.party.filter(x=>x!==id);
+  game.reserve=(game.reserve||[]).filter(x=>x!==id);
+  save();render();
+}
+function toParty(id){
+  if(game.party.length>=3)return;
+  game.reserve=(game.reserve||[]).filter(x=>x!==id);
+  if(!game.party.includes(id))game.party.push(id);
+  save();render();
+}
+function toReserve(id){
+  if((game.reserve||[]).length>=3)return;
+  game.party=game.party.filter(x=>x!==id);
+  if(!game.reserve.includes(id))game.reserve.push(id);
+  save();render();
+}
+function moveParty(i,d){
+  const j=i+d;if(j<0||j>=game.party.length)return;
+  [game.party[i],game.party[j]]=[game.party[j],game.party[i]];save();render();
+}
+function moveReserve(i,d){
+  const j=i+d;if(j<0||j>=game.reserve.length)return;
+  [game.reserve[i],game.reserve[j]]=[game.reserve[j],game.reserve[i]];save();render();
+}
 
 function breedResult(a,b){
   const keys=[a.species,b.species].sort();
-  const special=SPECIAL_NORM[keys.join("+")];
-  if(special)return {species:special,special:true};
+  const key=keys.join("+");
+
+  const bossRecipe=BOSS_NORM[key];
+  if(bossRecipe&&bossRecipeUnlocked(bossRecipe.species)){
+    return {species:bossRecipe.species,special:true,bossRecipe:true};
+  }
+
+  const special=SPECIAL_NORM[key];
+  if(special)return {species:special,special:true,bossRecipe:false};
   const fa=MONSTERS[a.species].family,fb=MONSTERS[b.species].family;
   if(fa===fb)return {species:strongerFamilySpecies(fa,a,b),special:false};
   const cross=FAMILY_CROSS[[fa,fb].sort().join("|")]||FAMILY_CROSS[`${fa}|${fb}`]||FAMILY_CROSS[`${fb}|${fa}`];
@@ -1090,10 +1958,14 @@ function breedResult(a,b){
 }
 function strongerFamilySpecies(family,a,b){
   const avg=(a.level+b.level)/2;
-  const choices=Object.entries(MONSTERS).filter(([id,d])=>d.family===family&&id!=="darkLord").sort((x,y)=>rankNum(x[1].rank)-rankNum(y[1].rank));
-  const target=avg>=35?5:avg>=25?4:avg>=16?3:2;
-  let eligible=choices.filter(x=>rankNum(x[1].rank)<=target);
-  return (eligible.at(-1)||choices[0])[0];
+  const choices=Object.entries(MONSTERS)
+    .filter(([id,d])=>d.family===family&&!BOSS_SPECIES.has(id)&&d.rank!=="S")
+    .sort((x,y)=>rankNum(x[1].rank)-rankNum(y[1].rank));
+  const target=avg>=40?6:avg>=30?5:avg>=20?4:avg>=12?3:2;
+  const eligible=choices.filter(x=>rankNum(x[1].rank)<=target);
+  const maxRank=Math.max(...eligible.map(x=>rankNum(x[1].rank)));
+  const top=eligible.filter(x=>rankNum(x[1].rank)===maxRank);
+  return pick(top.length?top:choices)[0];
 }
 function rankNum(r){return ({F:1,E:2,D:3,C:4,B:5,A:6,S:7})[r]||1}
 function inheritedPoints(a,b){return Math.min(10,Math.min(5,Math.floor(a.level/10))+Math.min(5,Math.floor(b.level/10)))}
@@ -1107,7 +1979,7 @@ function breedGrowthBonus(a,b){
 }
 function childPlus(a,b){
   const parent=Math.max(a.plus||0,b.plus||0);
-  return Math.min(10,parent+breedGrowthBonus(a,b));
+  return Math.min(BLOODLINE_MAX,parent+breedGrowthBonus(a,b));
 }
 
 function renderBreed(){
@@ -1119,11 +1991,11 @@ function renderBreed(){
     const r=breedResult(a,b),d=MONSTERS[r.species],pts=inheritedPoints(a,b),plus=childPlus(a,b),growth=breedGrowthBonus(a,b);
     preview=`<div class="panel"><h3>配合結果</h3>
       <p><b>${displayMonster(a)}</b> × <b>${displayMonster(b)}</b></p>
-      <p>→ <b>${d.name} +${plus}</b> <span class="notice">【${bloodlineTitle(plus)}】</span> ${r.special?"<span class='notice'>【特殊配合】</span>":""}</p>
+      <p>→ <b>${d.name} +${plus}</b> <span class="notice">【${bloodlineTitle(plus)}】</span> ${r.special?"<span class='notice'>【特殊配合】</span>":""}${r.bossRecipe?" <span class='good'>【撃破解禁レシピ】</span>":""}</p>
       <div class="small">${FAMILIES[d.family]} / ${d.rank}ランク / Lv.1で誕生</div>
       <p class="notice"><b>血統：+${Math.max(a.plus||0,b.plus||0)} → +${plus}　全能力 +${plus*2}%</b></p>
       <p>今回の育成ボーナス：<b>+${growth}</b>（両親の低い方のLvで決定）</p>
-      <p class="small">Lv10:+1 / Lv20:+2 / Lv30:+3 / Lv40:+4。Lv9以下では+値は増えません。</p>
+      <p class="small">Lv10:+1 / Lv20:+2 / Lv30:+3 / Lv40:+4。Lv9以下では+値は増えません。血統+値の上限は+99です。</p>
       <p>獲得できる継承ポイント：<b>${pts}pt</b></p>
       <p class="small">配合すると親2体はいなくなります。子は親のスキル・特性候補を一部継承します。</p>
       <button class="primary" onclick="prepareBreed()">継承ポイントを振り分ける</button>
@@ -1135,7 +2007,27 @@ function renderBreed(){
     <p><b>全能力 +${game.lastBreedResult.plus*2}%</b>　/　配合P ${game.lastBreedResult.points}</p>
     <button onclick="clearBreedResult()">確認</button>
   </div>`:"";
-  return `${success}<div class="panel"><h2>継承の儀</h2>
+  const bossBook=`<div class="panel">
+    <h2>ボス配合レシピ</h2>
+    <p class="small">各地域のボスを撃破すると、そのボスを確定で作れる特殊配合が解禁されます。</p>
+    ${BOSS_BREEDS.map(r=>{
+      const open=bossRecipeUnlocked(r.species);
+      const z=ZONES.find(z=>z.id===r.zone);
+      return `<div class="card">
+        <div class="statline">
+          <b>${open?MONSTERS[r.species].name:"？？？"}</b>
+          <span>${open?"解禁済み":`${z?.name||"地域"}ボス撃破で解禁`}</span>
+        </div>
+        <div class="small">${
+          open
+          ? `${MONSTERS[r.pair[0]].name} × ${MONSTERS[r.pair[1]].name}`
+          : "配合素材：？？？ × ？？？"
+        }</div>
+      </div>`;
+    }).join("")}
+  </div>`;
+
+  return `${success}${bossBook}<div class="panel"><h2>継承の儀</h2>
     <p class="small">育てた2体を配合し、新しいLv.1の魔物を誕生させます。親は配合後にいなくなります。</p>
     <label>親A</label><select onchange="breedSelect('a',this.value)" style="width:100%;padding:10px;margin:5px 0 10px;background:#101621;color:white">
       <option value="">選択</option>${mons.map(m=>`<option value="${m.uid}" ${breedDraft.a===m.uid?"selected":""}>${displayMonster(m)}</option>`).join("")}
@@ -1172,7 +2064,7 @@ function allocBreed(k,d){
 }
 function confirmBreed(){
   const a=byUid(breedDraft.a),b=byUid(breedDraft.b);if(!a||!b)return;
-  const inheritSkills=[...new Set([...a.skills,...b.skills,...MONSTERS[breedDraft.child].skills])].slice(0,4);
+  const inheritSkills=[...new Set([...skillsForLevel(breedDraft.child,1),...a.skills,...b.skills])].slice(0,4);
   const inheritTraits=[...new Set([...a.traits,...b.traits,...MONSTERS[breedDraft.child].traits])].slice(0,2);
   const plus=childPlus(a,b);
   const child=newMonster(breedDraft.child,1,{
@@ -1180,9 +2072,11 @@ function confirmBreed(){
     skills:inheritSkills,traits:inheritTraits,breedPts:deep(breedDraft.alloc),plus
   });
   game.party=game.party.filter(id=>id!==a.uid&&id!==b.uid);
+  game.reserve=(game.reserve||[]).filter(id=>id!==a.uid&&id!==b.uid);
   game.monsters=game.monsters.filter(m=>m.uid!==a.uid&&m.uid!==b.uid);
   game.monsters.push(child);
-  if(game.party.length<3)game.party.push(child.uid);
+  discoverSpecies(child.species);
+  placeOwnedMonster(child.uid);
   game.lastBreedResult={
     species:child.species,
     plus:child.plus,
@@ -1199,8 +2093,20 @@ function renderSave(){
     <p>データはこのブラウザの <code>localStorage</code> に保存されます。</p>
     <div class="actions"><button class="primary" onclick="save();alert('保存しました')">今すぐ保存</button><button onclick="exportSave()">セーブデータを書き出す</button><button onclick="importSave()">セーブデータを読み込む</button><button class="danger" onclick="if(confirm('本当に最初からやり直しますか？'))erase()">最初から</button></div>
   </div>
-  <div class="panel"><h3>図鑑進捗</h3><p>仲間にした魔物：${new Set(game.monsters.map(m=>m.species)).size}種 / ${Object.keys(MONSTERS).length}種（現在所持）</p>
-  <p>魔王軍撃破：${game.bossesDefeated}/5</p></div>`;
+  <div class="panel"><h3>図鑑進捗</h3><p>発見した魔物：${(game.discovered||[]).length}種 / ${Object.keys(MONSTERS).length}種</p>
+  <p>魔王軍撃破：${game.bossesDefeated}/${ZONES.length}</p>
+  <p>ボス配合レシピ：${(game.bossRecipes||[]).length}/${BOSS_BREEDS.length}</p>
+  <p class="small">セーブ形式 v${game.saveVersion||1} / 現行 v${SAVE_VERSION}</p></div>
+  <div class="panel">
+    <h3>物語回想</h3>
+    <p class="small">一度解禁された物語を読み返せます。旧バージョンから移行したセーブでは、進行済みの章も回想に追加されます。</p>
+    <div class="story-list">
+      ${Object.entries(STORY_SCENES)
+        .filter(([k])=>hasSeenStory(k))
+        .map(([k,s])=>`<button onclick="replayStory('${k}')"><b>${s.chapter}</b>　${s.title}</button>`)
+        .join("")||"<div class='small'>まだ回想できる物語はありません。</div>"}
+    </div>
+  </div>`;
 }
 function exportSave(){
   const data=btoa(unescape(encodeURIComponent(JSON.stringify(game))));
@@ -1208,15 +2114,16 @@ function exportSave(){
 }
 function importSave(){
   const data=prompt("セーブ文字列を貼り付けてください");if(!data)return;
-  try{game=JSON.parse(decodeURIComponent(escape(atob(data))));save();battle=null;currentView="home";render()}catch(e){alert("読み込みに失敗しました")}
+  try{game=migrate(JSON.parse(decodeURIComponent(escape(atob(data)))));save();battle=null;currentView="home";render()}catch(e){alert("読み込みに失敗しました")}
 }
 
 window.startGame=startGame;window.nav=nav;window.rest=rest;window.buyPotion=buyPotion;window.buyBait=buyBait;
 window.explore=explore;window.trainExplore=trainExplore;window.startAutoTraining=startAutoTraining;window.challengeBoss=challengeBoss;window.playerAction=playerAction;window.playerSkill=playerSkill;
 window.chooseAct=chooseAct;window.pickTarget=pickTarget;window.cancelPend=cancelPend;window.usePotion=usePotion;
-window.scout=scout;window.flee=flee;window.toRanch=toRanch;window.toParty=toParty;window.moveParty=moveParty;
+window.scout=scout;window.flee=flee;window.toRanch=toRanch;window.toParty=toParty;window.toReserve=toReserve;window.moveParty=moveParty;window.moveReserve=moveReserve;
 window.breedSelect=breedSelect;window.prepareBreed=prepareBreed;window.allocBreed=allocBreed;window.confirmBreed=confirmBreed;window.clearBreedResult=clearBreedResult;
 window.save=save;window.erase=erase;window.exportSave=exportSave;window.importSave=importSave;
+window.advanceStory=advanceStory;window.replayStory=replayStory;
 
 load()||(game=defaultGame());
 render();
