@@ -95,6 +95,7 @@ button{touch-action:manipulation}
     padding-right:max(14px,env(safe-area-inset-right));
   }
 }
+.foes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.mini{padding:8px;font-size:.82rem}.mini .bar{margin-top:4px}.dead{opacity:.35}
 </style>
 
 </head>
@@ -194,6 +195,8 @@ const SPECIAL_BREEDS = {
   ["aquaSlime+slime"]:"kingSlime"
 };
 
+const SPECIAL_NORM={};for(const[k,v]of Object.entries(SPECIAL_BREEDS))SPECIAL_NORM[k.split("+").sort().join("+")]=v;
+const FAM_ICON={slime:"🟢",beast:"🐺",dragon:"🐉",bird:"🦅",plant:"🌿",demon:"😈",material:"🗿",undead:"💀",aquatic:"🐟"};
 const FAMILY_CROSS = {
   "beast|dragon":"beast",
   "beast|demon":"beast",
@@ -365,7 +368,7 @@ function starterCard(id,desc){
   return `<div class="card"><h3>${d.name}</h3><div class="small">${FAMILIES[d.family]} / ${d.rank}ランク</div><p>${desc}</p><button class="primary" onclick="startGame('${id}')">この魔物で始める</button></div>`;
 }
 function renderHeader(){
-  return `<header><div><div class="logo">魔物継承記 <span class="small">v0.3.3</span></div><div class="small">${game.name} / 魔王軍撃破 ${game.bossesDefeated}/5</div></div>
+  return `<header><div><div class="logo">魔物継承記 <span class="small">v0.4.0</span></div><div class="small">${game.name} / 魔王軍撃破 ${game.bossesDefeated}/5</div></div>
   <div class="small">G ${game.gold}　薬 ${game.potions}　餌 ${game.scoutBait}</div></header>`;
 }
 function renderNav(){
@@ -480,7 +483,7 @@ function explore(zoneId){
   const z=ZONES.find(x=>x.id===zoneId);selectedZone=zoneId;
   const sp=pick(z.wild), lv=rint(z.levels[0],z.levels[1]);
   game.zoneProgress[zoneId]=Math.min(5,(game.zoneProgress[zoneId]||0)+1);
-  startBattle(newMonster(sp,lv),false,z);
+  const n=pick([1,2,2,3]);startBattle([newMonster(sp,Math.max(1,lv-(n-1))),...Array.from({length:n-1},()=>newMonster(pick(z.wild),Math.max(1,rint(z.levels[0],z.levels[1])-(n-1))))],false,z,{enemyDamageMult:n>1?.85:1});
 }
 function trainExplore(){
   if(!canBattle()){alert("戦える仲間がいません。宿で回復してください。");return}
@@ -761,24 +764,21 @@ async function startAutoTraining(count){
 function challengeBoss(zoneId){
   if(!canBattle())return alert("戦える仲間がいません。");
   const z=ZONES.find(x=>x.id===zoneId);
-  startBattle(newMonster(z.boss,z.bossLevel,{nature:"bold",traits:MONSTERS[z.boss].traits.slice(0,2)}),true,z);
+  const esc=Math.min(2,partyMons().filter(m=>m.hp>0).length-1);startBattle([newMonster(z.boss,z.bossLevel,{nature:"bold",traits:MONSTERS[z.boss].traits.slice(0,2)}),...Array.from({length:esc},()=>newMonster(pick(z.wild),Math.max(1,z.bossLevel-6)))],true,z);
 }
+function foes(){return battle.enemies.filter(e=>e.hp>0&&!e.caught)}
+function allies(){return partyMons().filter(m=>m.hp>0)}
+function cmdActor(){return allies().find(m=>!battle.cmds.some(c=>c.uid===m.uid))}
+function battleLead(){return cmdActor()||partyMons()[0]}
 function startBattle(enemy,isBoss,zone,options={}){
-  partyMons().forEach(m=>{m.status=null;m.statusTurns=0;m.buffs={atk:0,def:0,mag:0,spd:0};m.buffTurns={atk:0,def:0,mag:0,spd:0}});
-  battle={
-    enemy,isBoss,zoneId:zone.id,activeUid:getLeadAlive().uid,turn:1,
-    training:!!options.training,
-    expMult:options.expMult||1,
-    goldMult:options.goldMult||1,
-    enemyDamageMult:options.enemyDamageMult||1,
-    enemyHealUsed:0,
-    log:[`${options.training?"訓練相手":isBoss?"強敵":"野生"}の ${displayMonster(enemy)} が現れた！`],
-    locked:false
-  };
+  partyMons().forEach(m=>{m.status=null;m.statusTurns=0;m.guard=false;m.buffs={atk:0,def:0,mag:0,spd:0};m.buffTurns={atk:0,def:0,mag:0,spd:0}});
+  const enemies=Array.isArray(enemy)?enemy:[enemy];
+  battle={enemies,isBoss,zoneId:zone.id,turn:1,cmds:[],pend:null,training:!!options.training,
+    expMult:options.expMult||1,goldMult:options.goldMult||1,enemyDamageMult:options.enemyDamageMult||1,enemyHealUsed:0,
+    log:[`${options.training?"訓練相手":isBoss?"強敵":"野生"}の ${enemies.map(displayMonster).join("・")} が現れた！`],locked:false};
   render();
 }
-function battleLead(){return byUid(battle.activeUid)}
-function battleLog(t){battle.log.unshift(t);battle.log=battle.log.slice(0,10)}
+function battleLog(t){battle.log.unshift(t);battle.log=battle.log.slice(0,12)}
 function effectiveStats(m){
   const s=calcStats(m), turn=battle?.turn||1;
   let mult={atk:1,def:1,mag:1,spd:1};
@@ -786,79 +786,70 @@ function effectiveStats(m){
   if(m.traits.includes("quick")&&turn<=3)mult.spd*=1.2;
   return {...s,atk:Math.round(s.atk*mult.atk),def:Math.round(s.def*mult.def),mag:Math.round(s.mag*mult.mag),spd:Math.round(s.spd*mult.spd)};
 }
+function miniCard(m,isFoe,cls=""){
+  const s=calcStats(m),d=MONSTERS[m.species];
+  return `<div class="card mini ${cls}"><div>${FAM_ICON[d.family]} <b>${d.name}</b></div><div class="small">Lv.${m.level} ${statusText(m)}${m.guard?" 🛡":""}</div><div class="small">HP ${Math.max(0,m.hp)}/${s.hp}</div><div class="bar ${isFoe?"enemy":""}"><i style="width:${100*clamp(m.hp,0,s.hp)/s.hp}%"></i></div>${isFoe?"":`<div class="bar mp"><i style="width:${100*m.mp/s.mp}%"></i></div>`}</div>`;
+}
 function renderBattle(){
-  const me=battleLead(), en=battle.enemy;
-  const ms=calcStats(me), es=calcStats(en);
-  const mdef=MONSTERS[me.species],edef=MONSTERS[en.species];
-  return `<div class="panel">
-    <h2>${battle.training?"育成訓練場":battle.isBoss?"支配者戦":"野生魔物との戦闘"}　Turn ${battle.turn}</h2>
-    <div class="card">
-      <div class="statline"><b>${displayMonster(en)}</b><span>${FAMILIES[edef.family]}</span></div>
-      <div>HP ${Math.max(0,en.hp)}/${es.hp}</div><div class="bar enemy"><i style="width:${100*clamp(en.hp,0,es.hp)/es.hp}%"></i></div>
-      <div class="small">状態：${statusText(en)}</div>
-    </div>
+  const cur=cmdActor();
+  return `<div class="panel"><h2>${battle.training?"育成訓練場":battle.isBoss?"支配者戦":"野生魔物との戦闘"}　Turn ${battle.turn}</h2>
+    <div class="foes">${battle.enemies.map(e=>miniCard(e,true,e.hp<=0||e.caught?"dead":"")).join("")}</div>
     <div class="battleVS">VS</div>
-    <div class="card active">
-      <div class="statline"><b>${displayMonster(me)}</b><span>${FAMILIES[mdef.family]}</span></div>
-      <div>HP ${Math.max(0,me.hp)}/${ms.hp}　MP ${me.mp}/${ms.mp}</div>
-      <div class="bar"><i style="width:${100*clamp(me.hp,0,ms.hp)/ms.hp}%"></i></div>
-      <div class="bar mp"><i style="width:${100*me.mp/ms.mp}%"></i></div>
-      <div class="small">状態：${statusText(me)}</div>
-    </div>
-    ${renderBattleActions(me)}
+    <div class="foes">${partyMons().map(m=>miniCard(m,false,(cur&&m.uid===cur.uid?"active ":"")+(m.hp<=0?"dead":""))).join("")}</div>
+    ${cur?renderBattleActions(cur):""}
   </div>
   <div class="panel"><h3>戦闘ログ</h3><div class="log">${battle.log.join("\n")}</div></div>`;
 }
 function statusText(m){return m.status?({poison:"毒",sleep:"睡眠",paralyze:"麻痺"}[m.status]||m.status):"正常"}
 function renderBattleActions(me){
-  if(me.hp<=0)return `<div class="actions">${partyMons().filter(x=>x.hp>0).map(x=>`<button onclick="forceSwitch('${x.uid}')">${MONSTERS[x.species].name}を出す</button>`).join("")}</div>`;
-  return `<div class="actions">
-    <button class="primary" onclick="playerAction('attack')">たたかう</button>
-    ${me.skills.map((sk,i)=>`<button onclick="playerSkill(${i})" ${me.mp<SKILLS[sk].mp?"disabled":""}>${skillName(sk)} ${SKILLS[sk].mp}MP</button>`).join("")}
-    <button onclick="openSwitch()">いれかえ</button>
-    <button onclick="usePotion()" ${game.potions<=0?"disabled":""}>薬草 (${game.potions})</button>
-    ${battle.isBoss?"":battle.training?`<span class="small">訓練相手はスカウトできません。</span><button onclick="flee()">訓練をやめる</button>`:`<button class="warn" onclick="scout(false)">スカウト ${Math.round(scoutChance(false)*100)}%</button><button onclick="scout(true)" ${game.scoutBait<=0?"disabled":""}>好物+スカウト ${Math.round(scoutChance(true)*100)}% (${game.scoutBait})</button><button onclick="flee()">にげる</button>`}
-  </div>
-  <div id="switchPanel"></div>`;
+  const nm=MONSTERS[me.species].name;
+  if(battle.pend){const p=battle.pend;
+    return `<p class="notice">${nm}：対象を選んでください</p><div class="actions">${foes().map(e=>`<button onclick="pickTarget('${e.uid}')">${MONSTERS[e.species].name} Lv.${e.level}${p.kind==="scout"?` ${Math.round(scoutChance(p.bait,e,me)*100)}%`:""}</button>`).join("")}<button onclick="cancelPend()">戻る</button></div>`;}
+  const done=battle.cmds.length,total=allies().length+done;
+  return `<p class="notice">${nm}の行動（${done+1}/${total}）</p><div class="actions">
+    <button class="primary" onclick="chooseAct('attack')">たたかう</button>
+    ${me.skills.map(sk=>`<button onclick="chooseAct('skill','${sk}')" ${me.mp<SKILLS[sk].mp?"disabled":""}>${skillName(sk)} ${SKILLS[sk].mp}MP</button>`).join("")}
+    <button onclick="chooseAct('defend')">防御</button>
+    <button onclick="chooseAct('potion')" ${game.potions<=0?"disabled":""}>薬草 (${game.potions})</button>
+    ${battle.isBoss?"":battle.training?`<button onclick="flee()">訓練をやめる</button>`:`<button class="warn" onclick="chooseAct('scout')">スカウト</button><button onclick="chooseAct('scout',null,true)" ${game.scoutBait<=0?"disabled":""}>好物+スカウト (${game.scoutBait})</button><button onclick="flee()">にげる</button>`}
+  </div>`;
 }
-function openSwitch(){
-  const me=battleLead();
-  const opts=partyMons().filter(m=>m.uid!==me.uid&&m.hp>0);
-  document.getElementById("switchPanel").innerHTML=`<div class="panel"><b>交代先</b><div class="actions">${opts.map(m=>`<button onclick="switchAction('${m.uid}')">${displayMonster(m)}</button>`).join("")||"交代できる仲間がいない"}</div></div>`;
+function chooseAct(kind,skill,bait){
+  if(!battle||battle.locked)return;const me=cmdActor();if(!me)return;
+  const sk=skill?SKILLS[skill]:null;
+  if(sk&&me.mp<sk.mp)return;if(kind==="potion"&&game.potions<=0)return;
+  const needT=kind==="attack"||kind==="scout"||(sk&&["physical","magic","status"].includes(sk.type));
+  if(needT&&foes().length>1){battle.pend={kind,skill,bait:!!bait};render();return}
+  pushCmd({kind,skill,bait:!!bait,t:needT?foes()[0].uid:null});
 }
-function forceSwitch(id){battle.activeUid=id;battleLog(`${MONSTERS[byUid(id).species].name}を繰り出した！`);render()}
-function switchAction(id){resolveRound({kind:"switch",uid:id})}
-function usePotion(){if(game.potions<=0)return;resolveRound({kind:"potion"})}
-function playerAction(){resolveRound({kind:"attack"})}
-function playerSkill(i){const m=battleLead(),sk=m.skills[i];if(!sk||m.mp<SKILLS[sk].mp)return;resolveRound({kind:"skill",skill:sk})}
-
-function resolveRound(action){
-  if(!battle||battle.locked)return;
-  battle.locked=true;
-  const me=battleLead(), en=battle.enemy;
-  const enemyAction=chooseEnemyAction(en);
-  const mspd=effectiveStats(me).spd, espd=effectiveStats(en).spd;
-  let sequence;
-  if(action.kind==="switch"||action.kind==="potion") sequence=[["player",action],["enemy",enemyAction]];
-  else sequence = mspd>=espd ? [["player",action],["enemy",enemyAction]] : [["enemy",enemyAction],["player",action]];
-  for(const [side,act] of sequence){
-    if(!battle)break;
-    const actor=side==="player"?battleLead():battle.enemy;
-    const target=side==="player"?battle.enemy:battleLead();
-    if(actor.hp<=0||target.hp<=0)continue;
-    performAction(side,actor,target,act);
+function pickTarget(id){const p=battle.pend;if(p)pushCmd({kind:p.kind,skill:p.skill,bait:p.bait,t:id})}
+function cancelPend(){battle.pend=null;render()}
+function pushCmd(c){const a=cmdActor();if(!a)return;battle.cmds.push({...c,uid:a.uid});battle.pend=null;if(cmdActor())render();else resolveRound()}
+function playerAction(){chooseAct("attack")}
+function playerSkill(i){const m=cmdActor();if(m)chooseAct("skill",m.skills[i])}
+function usePotion(){chooseAct("potion")}
+function resolveRound(){
+  if(!battle||battle.locked)return;battle.locked=true;
+  const acts=battle.cmds.map(c=>({side:"p",actor:byUid(c.uid),c}));
+  foes().forEach(e=>acts.push({side:"e",actor:e,c:chooseEnemyAction(e)}));
+  acts.forEach(a=>{a.k=effectiveStats(a.actor).spd*(.88+Math.random()*.24);if(a.c.kind==="defend")a.actor.guard=true});
+  acts.sort((a,b)=>b.k-a.k);
+  for(const {side,actor,c} of acts){
+    if(actor.hp<=0||actor.caught)continue;
+    if(!foes().length||!allies().length)break;
+    let target=actor;
+    if(side==="e")target=pick(allies());
+    else if(c.t)target=foes().find(e=>e.uid===c.t)||pick(foes());
+    const was=target.hp>0;
+    performAction(side,actor,target,c);
+    if(was&&target.hp<=0&&!target.caught)battleLog(`${MONSTERS[target.species].name}は倒れた！`);
   }
-  if(!battle)return;
-  endTurnEffects(battleLead(),"player");
-  endTurnEffects(battle.enemy,"enemy");
-  if(!battle)return;
-  if(battle.enemy.hp<=0){winBattle();return}
-  if(battleLead().hp<=0){
-    battleLog(`${MONSTERS[battleLead().species].name}は倒れた！`);
-    if(!partyMons().some(m=>m.hp>0)){loseBattle();return}
-  }
-  tickBuffs(battleLead());tickBuffs(battle.enemy);
-  battle.turn++;battle.locked=false;save();render();
+  [...allies(),...foes()].forEach(m=>{const w=m.hp>0;endTurnEffects(m);if(w&&m.hp<=0)battleLog(`${MONSTERS[m.species].name}は倒れた！`)});
+  [...partyMons(),...battle.enemies].forEach(m=>{m.guard=false});
+  if(!foes().length){winBattle();return}
+  if(!allies().length){loseBattle();return}
+  [...partyMons(),...battle.enemies].forEach(tickBuffs);
+  battle.turn++;battle.cmds=[];battle.locked=false;save();render();
 }
 function canAct(m){
   if(m.status==="sleep"){
@@ -870,14 +861,11 @@ function canAct(m){
 }
 function performAction(side,actor,target,act){
   if(!canAct(actor))return;
-  if(act.kind==="switch"&&side==="player"){battle.activeUid=act.uid;battleLog(`${MONSTERS[byUid(act.uid).species].name}に交代した！`);return}
-  if(act.kind==="potion"&&side==="player"){
-    game.potions--;const s=calcStats(actor);const heal=Math.round(s.hp*.45);actor.hp=Math.min(s.hp,actor.hp+heal);battleLog(`薬草で${heal}回復した。`);return;
-  }
+  if(act.kind==="potion"){if(game.potions<=0)return;game.potions--;const s=calcStats(actor);const h=Math.round(s.hp*.45);actor.hp=Math.min(s.hp,actor.hp+h);battleLog(`${MONSTERS[actor.species].name}は薬草で${h}回復した。`);return}
+  if(act.kind==="defend"){battleLog(`${MONSTERS[actor.species].name}は身を守っている。`);return}
+  if(act.kind==="scout"){doScout(actor,target,act.bait);return}
   if(act.kind==="attack"){dealDamage(actor,target,{name:"通常攻撃",type:"physical",power:28,mp:0,element:"none"});return}
-  if(act.kind==="skill"){
-    const sk=SKILLS[act.skill];actor.mp-=sk.mp;applySkill(actor,target,sk);return;
-  }
+  if(act.kind==="skill"){const sk=SKILLS[act.skill];actor.mp-=sk.mp;applySkill(actor,target,sk)}
 }
 function chooseEnemyAction(en){
   const hpRate=en.hp/calcStats(en).hp;
@@ -921,7 +909,7 @@ function applySkill(actor,target,sk){
 
     actor.hp=Math.min(maxHp,actor.hp+amt);
 
-    if(battle&&actor===battle.enemy){
+    if(battle&&battle.enemies.includes(actor)){
       battle.enemyHealUsed=(battle.enemyHealUsed||0)+1;
     }
 
@@ -962,7 +950,8 @@ function dealDamage(actor,target,sk){
   if(target.traits.includes("fireguard")&&sk.element==="fire")mult*=.75;
   if(target.traits.includes("iron")&&sk.type==="physical")mult*=.90;
 
-  if(battle && actor===battle.enemy)mult*=battle.enemyDamageMult||1;
+  if(battle&&battle.enemies.includes(actor))mult*=battle.enemyDamageMult||1;
+  if(target.guard)mult*=.5;
 
   dmg=Math.max(1,Math.round(dmg*mult));
   target.hp=Math.max(0,target.hp-dmg);
@@ -981,48 +970,31 @@ function endTurnEffects(m){
 }
 function tickBuffs(m){for(const k of Object.keys(m.buffTurns||{})) if(m.buffTurns[k]>0)m.buffTurns[k]--}
 
-function scoutChance(withBait=false){
+function scoutChance(withBait=false,en,me){
   if(!battle||battle.isBoss||battle.training)return 0;
-  const en=battle.enemy,es=calcStats(en),me=battleLead();
-  let chance=.10 +(1-en.hp/es.hp)*.65 + Math.max(-.12,(me.level-en.level)*.012);
+  en=en||foes()[0];me=me||battleLead();const es=calcStats(en);
+  let chance=.10+(1-en.hp/es.hp)*.65+Math.max(-.12,(me.level-en.level)*.012);
   if(en.status)chance+=.12;
   if(me.traits.includes("scout"))chance+=.08;
   if(withBait)chance+=.20;
   return clamp(chance,.05,.90);
 }
-
-function scout(withBait){
-  if(!battle||battle.isBoss||battle.training)return;
-  const en=battle.enemy,es=calcStats(en),me=battleLead();
-  let chance=scoutChance(withBait);
-  if(withBait)game.scoutBait--;
-  const pct=Math.round(chance*100);
+function scout(withBait){chooseAct("scout",null,!!withBait)}
+function doScout(me,en,bait){
+  const chance=scoutChance(bait,en,me),pct=Math.round(chance*100);
+  if(bait)game.scoutBait=Math.max(0,game.scoutBait-1);
   if(Math.random()<chance){
-    en.hp=calcStats(en).hp;en.mp=calcStats(en).mp;
-    game.monsters.push(en);
-    if(game.party.length<3)game.party.push(en.uid);
+    const s=calcStats(en);en.hp=s.hp;en.mp=s.mp;en.status=null;en.caught=true;
+    game.monsters.push(en);if(game.party.length<3)game.party.push(en.uid);
     addLog(`${MONSTERS[en.species].name}のスカウトに成功した！（成功率${pct}%）`);
-    battle=null;save();currentView="party";render();
-  }else{
-    battleLog(`スカウト失敗……（成功率${pct}%）`);
-    resolveEnemyOnly();
-  }
-}
-function resolveEnemyOnly(){
-  if(!battle)return;
-  const en=battle.enemy,me=battleLead();
-  if(en.hp>0&&me.hp>0)performAction("enemy",en,me,chooseEnemyAction(en));
-  if(me.hp<=0){
-    battleLog(`${MONSTERS[me.species].name}は倒れた！`);
-    if(!partyMons().some(m=>m.hp>0)){loseBattle();return}
-  }
-  battle.turn++;save();render();
+    battleLog(`${MONSTERS[en.species].name}が仲間になった！`);
+  }else battleLog(`${MONSTERS[en.species].name}のスカウト失敗……（成功率${pct}%）`);
 }
 function flee(){
+  if(!battle||battle.locked)return;
   if(Math.random()<.75){addLog("戦闘から逃げ出した。");battle=null;save();render()}
-  else{battleLog("逃げられなかった！");resolveEnemyOnly()}
+  else{battleLog("逃げられなかった！");pushCmd({kind:"wait"})}
 }
-
 function gainExp(m,amt){
   if(m.level>=MAX_LEVEL){
     m.level=MAX_LEVEL;
@@ -1048,29 +1020,21 @@ function gainExp(m,amt){
   return leveled;
 }
 function winBattle(){
-  const en=battle.enemy,z=ZONES.find(x=>x.id===battle.zoneId);
-  const exp=Math.round(en.level*14*(battle.isBoss?2.8:1)*(battle.expMult||1));
-  const gold=Math.round(en.level*8*(battle.isBoss?3:1)*(battle.goldMult||1));
-
-  partyMons().forEach((m,i)=>{
-    if(m.hp>0){
-      const before=m.level;
-      gainExp(m,Math.round(exp*(i===0?1:.75)));
-
-      if(m.level>before){
-        addLog(`${MONSTERS[m.species].name}がLv.${m.level}に上がった！`);
-      }
-    }
+  const z=ZONES.find(x=>x.id===battle.zoneId),boss=battle.enemies[0];
+  const dead=battle.enemies.filter(e=>!e.caught);
+  const bm=e=>battle.isBoss&&e===boss;
+  const exp=Math.round(dead.reduce((t,e)=>t+e.level*14*(bm(e)?2.8:1),0)*(battle.expMult||1));
+  const gold=Math.round(dead.reduce((t,e)=>t+e.level*8*(bm(e)?3:1),0)*(battle.goldMult||1));
+  allies().forEach((m,i)=>{
+    const before=m.level;gainExp(m,Math.round(exp*(i===0?1:.75)));
+    if(m.level>before)addLog(`${MONSTERS[m.species].name}がLv.${m.level}に上がった！`);
   });
-
   game.gold+=gold;
   if(battle.isBoss){
-    const expected=z.unlock;
-    if(game.bossesDefeated===expected){game.bossesDefeated++;addLog(`${z.name}の支配者を撃破した！ 新たな地域への道が開いた。`)}
+    if(game.bossesDefeated===z.unlock){game.bossesDefeated++;addLog(`${z.name}の支配者を撃破した！ 新たな地域への道が開いた。`)}
     if(z.id==="abyss"){game.won=true;addLog("魔王ヴァルガスを討ち、世界に平和が戻った！")}
-  } else if(battle.training){
-    addLog(`訓練を終えた。経験値${exp}、${gold}Gを獲得。`);
-  } else addLog(`${MONSTERS[en.species].name}を倒した。経験値${exp}、${gold}Gを獲得。`);
+  }else if(battle.training)addLog(`訓練を終えた。経験値${exp}、${gold}Gを獲得。`);
+  else addLog(`${dead.length?dead.map(e=>MONSTERS[e.species].name).join("・")+"を倒した。":"スカウトで戦闘終了。"}経験値${exp}、${gold}Gを獲得。`);
   battle=null;save();currentView="home";render();
 }
 function loseBattle(){
@@ -1117,7 +1081,7 @@ function moveParty(i,d){const j=i+d;if(j<0||j>=game.party.length)return;[game.pa
 
 function breedResult(a,b){
   const keys=[a.species,b.species].sort();
-  const special=SPECIAL_BREEDS[keys.join("+")] || SPECIAL_BREEDS[[b.species,a.species].sort().join("+")];
+  const special=SPECIAL_NORM[keys.join("+")];
   if(special)return {species:special,special:true};
   const fa=MONSTERS[a.species].family,fb=MONSTERS[b.species].family;
   if(fa===fb)return {species:strongerFamilySpecies(fa,a,b),special:false};
@@ -1249,7 +1213,7 @@ function importSave(){
 
 window.startGame=startGame;window.nav=nav;window.rest=rest;window.buyPotion=buyPotion;window.buyBait=buyBait;
 window.explore=explore;window.trainExplore=trainExplore;window.startAutoTraining=startAutoTraining;window.challengeBoss=challengeBoss;window.playerAction=playerAction;window.playerSkill=playerSkill;
-window.openSwitch=openSwitch;window.switchAction=switchAction;window.forceSwitch=forceSwitch;window.usePotion=usePotion;
+window.chooseAct=chooseAct;window.pickTarget=pickTarget;window.cancelPend=cancelPend;window.usePotion=usePotion;
 window.scout=scout;window.flee=flee;window.toRanch=toRanch;window.toParty=toParty;window.moveParty=moveParty;
 window.breedSelect=breedSelect;window.prepareBreed=prepareBreed;window.allocBreed=allocBreed;window.confirmBreed=confirmBreed;window.clearBreedResult=clearBreedResult;
 window.save=save;window.erase=erase;window.exportSave=exportSave;window.importSave=importSave;
