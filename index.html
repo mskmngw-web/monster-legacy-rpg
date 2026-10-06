@@ -215,11 +215,13 @@ const ZONES = [
   {id:"forest",name:"深緑の森",unlock:1,desc:"毒草と古木が生い茂る森。",wild:["sprout","wolf","raven","aquaSlime"],levels:[6,12],boss:"gargoyle",bossLevel:14},
   {id:"volcano",name:"赤岩火山",unlock:2,desc:"竜と炎獣が棲む危険地帯。",wild:["hatchling","flameHound","golem","imp"],levels:[12,20],boss:"wyvern",bossLevel:23},
   {id:"ruins",name:"亡国の遺跡",unlock:3,desc:"魔王軍に滅ぼされた古い帝国。",wild:["skull","armor","gargoyle","raven"],levels:[20,30],boss:"lich",bossLevel:34},
-  {id:"abyss",name:"魔王領",unlock:4,desc:"魔王ヴァルガスが待つ暗黒の大地。",wild:["lich","gargoyle","ancientDragon","leviathan"],levels:[30,42],boss:"darkLord",bossLevel:48}
+  {id:"abyss",name:"魔王領",unlock:4,desc:"魔王ヴァルガスが待つ暗黒の大地。",wild:["lich","gargoyle","ancientDragon","leviathan"],levels:[30,42],boss:"darkLord",bossLevel:46}
 ];
 
 const ELEMENT_ADV = {fire:"wind",wind:"earth",earth:"water",water:"fire",light:"dark",dark:"light"};
 
+const MAX_LEVEL = 99;
+let autoTraining = false;
 let uidCounter = 1;
 function uid(){ return "m"+Date.now().toString(36)+(uidCounter++).toString(36); }
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
@@ -275,7 +277,7 @@ function calcStats(m){
   }
   return out;
 }
-function xpNeed(level){return 20+level*level*6}
+function xpNeed(level){return Math.round(30+level*level*2.4)}
 function displayMonster(m){
   const d=MONSTERS[m.species], s=calcStats(m);
   const plus=(m.plus||0)>0?` +${m.plus}`:"";
@@ -363,7 +365,7 @@ function starterCard(id,desc){
   return `<div class="card"><h3>${d.name}</h3><div class="small">${FAMILIES[d.family]} / ${d.rank}ランク</div><p>${desc}</p><button class="primary" onclick="startGame('${id}')">この魔物で始める</button></div>`;
 }
 function renderHeader(){
-  return `<header><div><div class="logo">魔物継承記 <span class="small">v0.3.1</span></div><div class="small">${game.name} / 魔王軍撃破 ${game.bossesDefeated}/5</div></div>
+  return `<header><div><div class="logo">魔物継承記 <span class="small">v0.3.3</span></div><div class="small">${game.name} / 魔王軍撃破 ${game.bossesDefeated}/5</div></div>
   <div class="small">G ${game.gold}　薬 ${game.potions}　餌 ${game.scoutBait}</div></header>`;
 }
 function renderNav(){
@@ -412,6 +414,11 @@ function monsterCard(m,active=false){
     <div class="statline"><span>HP ${m.hp}/${s.hp}</span><span>MP ${m.mp}/${s.mp}</span></div>
     <div class="bar"><i style="width:${100*m.hp/s.hp}%"></i></div>
     <div class="small">攻 ${s.atk} / 防 ${s.def} / 魔 ${s.mag} / 速 ${s.spd}</div>
+    <div class="small">${
+      m.level>=MAX_LEVEL
+      ? "EXP MAX"
+      : `EXP ${m.exp}/${xpNeed(m.level)}（次Lvまで ${Math.max(0,xpNeed(m.level)-m.exp)}）`
+    }</div>
   </div>`;
 }
 
@@ -421,9 +428,30 @@ function renderExplore(){
   return `<div class="panel">
     <h2>育成訓練場</h2>
     <p class="small">配合直後のLv.1育成用。先頭モンスター以下のLvを中心に、低Lvでは安全な訓練相手が出現します。</p>
-    <p>現在の基準Lv：<b>${trainLv}</b>　経験値：<b>1.8倍</b>　獲得G：半分</p>
+    <p>現在の基準Lv：<b>${trainLv}</b>　経験値：<b>2.2倍</b>　訓練上限Lv：<b>${Math.min(40,8+game.bossesDefeated*8)}</b>　獲得G：半分</p>
     <p class="good">訓練場では全滅してもゴールドを失いません。スカウトはできません。</p>
-    <button class="primary" onclick="trainExplore()">訓練する</button>
+
+    <div class="actions">
+      <button class="primary" onclick="trainExplore()" ${autoTraining?"disabled":""}>通常訓練</button>
+    </div>
+
+    <div class="hr"></div>
+
+    <h3>高速自動特訓</h3>
+    <p class="small">
+      戦闘画面を省略して連続訓練します。毎戦後に全回復。
+      経験値のみ獲得し、ゴールド・アイテム・スカウトはありません。
+    </p>
+
+    <div class="actions">
+      <button onclick="startAutoTraining(10)" ${autoTraining?"disabled":""}>10回</button>
+      <button class="primary" onclick="startAutoTraining(100)" ${autoTraining?"disabled":""}>100回</button>
+      <button class="warn" onclick="startAutoTraining(1000)" ${autoTraining?"disabled":""}>1000回</button>
+    </div>
+
+    <div id="autoTrainStatus" class="small" style="margin-top:10px">
+      ${autoTraining?"高速特訓中…":" "}
+    </div>
   </div>
   <div class="panel"><h2>探索地</h2><div class="grid">
   ${ZONES.map(z=>{
@@ -458,20 +486,278 @@ function trainExplore(){
   if(!canBattle()){alert("戦える仲間がいません。宿で回復してください。");return}
   const lead=getLeadAlive();
 
-  // Lv1〜3は事故を避けるため、比較的戦いやすい訓練相手だけ出す。
   const pool=lead.level<=3
     ? ["slime","sparrow","sprout"]
-    : ["slime","wolf","sparrow","fish","sprout"];
+    : lead.level<=16
+    ? ["slime","wolf","sparrow","fish","sprout","aquaSlime"]
+    : ["wolf","sprout","raven","aquaSlime","hatchling","skull","golem"];
 
-  const lv=clamp(lead.level-1+rint(0,1),1,10);
+  const trainingCap=Math.min(40,8+game.bossesDefeated*8);
+  const lv=clamp(lead.level-1+rint(0,1),1,trainingCap);
+
   const zone={id:"training",name:"育成訓練場"};
+
   startBattle(newMonster(pick(pool),lv),false,zone,{
     training:true,
-    expMult:1.8,
+    expMult:2.2,
     goldMult:0.5,
     enemyDamageMult:0.70
   });
 }
+
+function autoTrainingPool(level){
+  if(level<=3)return ["slime","sparrow","sprout"];
+  if(level<=16)return ["slime","wolf","sparrow","fish","sprout","aquaSlime"];
+  return ["wolf","sprout","raven","aquaSlime","hatchling","skull","golem"];
+}
+
+function autoTrainingEnemy(){
+  const lead=partyMons()[0]||getLeadAlive();
+  const trainingCap=Math.min(40,8+game.bossesDefeated*8);
+  const level=clamp((lead?.level||1)-1+rint(0,1),1,trainingCap);
+  return newMonster(pick(autoTrainingPool(lead?.level||1)),level);
+}
+
+function autoDamage(actor,target,skill=null,enemySide=false){
+  const a=calcStats(actor);
+  const t=calcStats(target);
+
+  const magic=!!skill&&skill.type==="magic";
+  const physical=!skill||skill.type==="physical";
+
+  const atk=magic?a.mag:a.atk;
+  const def=magic?t.mag:t.def;
+  const power=skill?skill.power:28;
+  const element=skill?.element||"none";
+
+  let dmg=(power+atk*.55-def*.28)*.26*(.92+Math.random()*.16);
+  let mult=1;
+
+  if(actor.traits.includes("hunt")&&target.hp<calcStats(target).hp*.5)mult*=1.20;
+  if(actor.traits.includes("brave")&&actor.hp<calcStats(actor).hp*.35)mult*=1.18;
+  if(actor.traits.includes("noct")&&element==="dark")mult*=1.15;
+  if(target.traits.includes("fireguard")&&element==="fire")mult*=.75;
+  if(target.traits.includes("iron")&&physical)mult*=.90;
+
+  if(enemySide)mult*=.70;
+
+  dmg=Math.max(1,Math.round(dmg*mult));
+  target.hp=Math.max(0,target.hp-dmg);
+}
+
+function autoHeal(actor){
+  const maxHp=calcStats(actor).hp;
+  const s=calcStats(actor);
+
+  const amt=Math.max(
+    1,
+    Math.round(
+      (maxHp*.18+s.mag*.03)*
+      (.92+Math.random()*.16)
+    )
+  );
+
+  actor.hp=Math.min(maxHp,actor.hp+amt);
+}
+
+function autoChooseDamageSkill(m){
+  const candidates=m.skills
+    .map(k=>({key:k,skill:SKILLS[k]}))
+    .filter(x=>
+      x.skill
+      &&
+      (x.skill.type==="physical"||x.skill.type==="magic")
+      &&
+      x.skill.mp<=m.mp
+    );
+
+  if(!candidates.length)return null;
+
+  candidates.sort((a,b)=>b.skill.power-a.skill.power);
+  return candidates[0];
+}
+
+function autoPartyTurn(actor,enemy){
+  const hpRate=actor.hp/calcStats(actor).hp;
+  const healKey=actor.skills.find(
+    k=>SKILLS[k]?.type==="heal"&&SKILLS[k].mp<=actor.mp
+  );
+
+  if(hpRate<=.32&&healKey){
+    actor.mp-=SKILLS[healKey].mp;
+    autoHeal(actor);
+    return;
+  }
+
+  const best=autoChooseDamageSkill(actor);
+
+  if(best){
+    actor.mp-=best.skill.mp;
+    autoDamage(actor,enemy,best.skill,false);
+  }else{
+    autoDamage(actor,enemy,null,false);
+  }
+}
+
+function autoEnemyTurn(enemy,target,state){
+  const hpRate=enemy.hp/calcStats(enemy).hp;
+  const healKey=enemy.skills.find(
+    k=>SKILLS[k]?.type==="heal"&&SKILLS[k].mp<=enemy.mp
+  );
+
+  if(hpRate<=.40&&healKey&&state.heals<2){
+    enemy.mp-=SKILLS[healKey].mp;
+    autoHeal(enemy);
+    state.heals++;
+    return;
+  }
+
+  const best=autoChooseDamageSkill(enemy);
+
+  if(best&&Math.random()<.70){
+    enemy.mp-=best.skill.mp;
+    autoDamage(enemy,target,best.skill,true);
+  }else{
+    autoDamage(enemy,target,null,true);
+  }
+}
+
+function runOneAutoTrainingBattle(){
+  fullHeal();
+
+  const enemy=autoTrainingEnemy();
+  const state={heals:0};
+  let turn=0;
+
+  while(
+    turn<40
+    &&
+    enemy.hp>0
+    &&
+    partyMons().some(m=>m.hp>0)
+  ){
+    turn++;
+
+    let active=partyMons().find(m=>m.hp>0);
+    if(!active)break;
+
+    const ps=calcStats(active).spd;
+    const es=calcStats(enemy).spd;
+
+    if(ps>=es){
+      autoPartyTurn(active,enemy);
+
+      if(enemy.hp>0){
+        active=partyMons().find(m=>m.hp>0);
+        if(active)autoEnemyTurn(enemy,active,state);
+      }
+    }else{
+      autoEnemyTurn(enemy,active,state);
+
+      active=partyMons().find(m=>m.hp>0);
+      if(enemy.hp>0&&active){
+        autoPartyTurn(active,enemy);
+      }
+    }
+  }
+
+  const win=enemy.hp<=0;
+
+  if(win){
+    const exp=Math.round(enemy.level*14*2.2);
+
+    partyMons().forEach((m,i)=>{
+      gainExp(
+        m,
+        Math.round(exp*(i===0?1:.75))
+      );
+    });
+
+    fullHeal();
+    return {win:true,exp};
+  }
+
+  fullHeal();
+  return {win:false,exp:0};
+}
+
+function setAutoTrainStatus(text){
+  const el=document.getElementById("autoTrainStatus");
+  if(el)el.textContent=text;
+}
+
+async function startAutoTraining(count){
+  if(autoTraining||battle)return;
+  if(!partyMons().length){
+    alert("仲間がいません。");
+    return;
+  }
+
+  const before=partyMons().map(m=>({
+    uid:m.uid,
+    level:m.level
+  }));
+
+  autoTraining=true;
+  render();
+
+  let wins=0;
+  let losses=0;
+  let totalExp=0;
+  let executed=0;
+
+  const chunk=count>=1000?25:count>=100?20:10;
+
+  for(let i=0;i<count;i++){
+    if(partyMons().every(m=>m.level>=MAX_LEVEL)){
+      break;
+    }
+
+    const result=runOneAutoTrainingBattle();
+    executed++;
+
+    if(result.win){
+      wins++;
+      totalExp+=result.exp;
+    }else{
+      losses++;
+    }
+
+    if(executed%chunk===0||executed===count){
+      setAutoTrainStatus(
+        `高速特訓中… ${executed}/${count}回　勝利${wins} / 敗北${losses}`
+      );
+
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+  }
+
+  const changes=partyMons().map(m=>{
+    const b=before.find(x=>x.uid===m.uid);
+    return `${MONSTERS[m.species].name}: Lv.${b?.level??m.level} → Lv.${m.level}`;
+  });
+
+  addLog(
+    `高速特訓完了：${wins}勝${losses}敗 / 獲得EXP ${totalExp} / ${changes.join("、")}`
+  );
+
+  autoTraining=false;
+  save();
+  currentView="explore";
+  render();
+
+  setTimeout(()=>{
+    alert(
+      `高速特訓完了\n\n`+
+      `実行: ${executed}回\n`+
+      `勝利: ${wins}\n`+
+      `敗北: ${losses}\n`+
+      `獲得EXP: ${totalExp}\n\n`+
+      changes.join("\n")
+    );
+  },0);
+}
+
 function challengeBoss(zoneId){
   if(!canBattle())return alert("戦える仲間がいません。");
   const z=ZONES.find(x=>x.id===zoneId);
@@ -485,6 +771,7 @@ function startBattle(enemy,isBoss,zone,options={}){
     expMult:options.expMult||1,
     goldMult:options.goldMult||1,
     enemyDamageMult:options.enemyDamageMult||1,
+    enemyHealUsed:0,
     log:[`${options.training?"訓練相手":isBoss?"強敵":"野生"}の ${displayMonster(enemy)} が現れた！`],
     locked:false
   };
@@ -593,13 +880,53 @@ function performAction(side,actor,target,act){
   }
 }
 function chooseEnemyAction(en){
-  const available=en.skills.filter(k=>SKILLS[k].mp<=en.mp);
-  if(available.length&&Math.random()<.72)return {kind:"skill",skill:pick(available)};
+  const hpRate=en.hp/calcStats(en).hp;
+
+  const available=en.skills.filter(k=>{
+    if(SKILLS[k].mp>en.mp)return false;
+
+    if(
+      SKILLS[k].type==="heal"
+      &&
+      (
+        hpRate>.45
+        ||
+        (battle?.enemyHealUsed||0)>=2
+      )
+    ){
+      return false;
+    }
+
+    return true;
+  });
+
+  if(available.length&&Math.random()<.72){
+    return {kind:"skill",skill:pick(available)};
+  }
+
   return {kind:"attack"};
 }
 function applySkill(actor,target,sk){
   if(sk.type==="heal"){
-    const s=effectiveStats(actor);const amt=Math.round((sk.power+s.mag*.4)*(0.9+Math.random()*.2));actor.hp=Math.min(calcStats(actor).hp,actor.hp+amt);battleLog(`${MONSTERS[actor.species].name}の${sk.name}！ HPが${amt}回復。`);return;
+    const s=effectiveStats(actor);
+    const maxHp=calcStats(actor).hp;
+
+    const amt=Math.max(
+      1,
+      Math.round(
+        (maxHp*.18+s.mag*.03)*
+        (0.9+Math.random()*.2)
+      )
+    );
+
+    actor.hp=Math.min(maxHp,actor.hp+amt);
+
+    if(battle&&actor===battle.enemy){
+      battle.enemyHealUsed=(battle.enemyHealUsed||0)+1;
+    }
+
+    battleLog(`${MONSTERS[actor.species].name}の${sk.name}！ HPが${amt}回復。`);
+    return;
   }
   if(sk.type==="buff"){
     actor.buffs[sk.stat]=sk.amount;actor.buffTurns[sk.stat]=sk.turns;battleLog(`${MONSTERS[actor.species].name}の${sk.name}！ ${sk.stat==="atk"?"攻撃":"能力"}が上がった。`);return;
@@ -697,15 +1024,45 @@ function flee(){
 }
 
 function gainExp(m,amt){
-  m.exp+=amt;let leveled=0;
-  while(m.exp>=xpNeed(m.level)){m.exp-=xpNeed(m.level);m.level++;leveled++;healMonster(m)}
+  if(m.level>=MAX_LEVEL){
+    m.level=MAX_LEVEL;
+    m.exp=0;
+    return 0;
+  }
+
+  m.exp+=amt;
+  let leveled=0;
+
+  while(m.level<MAX_LEVEL && m.exp>=xpNeed(m.level)){
+    m.exp-=xpNeed(m.level);
+    m.level++;
+    leveled++;
+    healMonster(m);
+  }
+
+  if(m.level>=MAX_LEVEL){
+    m.level=MAX_LEVEL;
+    m.exp=0;
+  }
+
   return leveled;
 }
 function winBattle(){
   const en=battle.enemy,z=ZONES.find(x=>x.id===battle.zoneId);
-  const exp=Math.round(en.level*10*(battle.isBoss?2.4:1)*(battle.expMult||1));
+  const exp=Math.round(en.level*14*(battle.isBoss?2.8:1)*(battle.expMult||1));
   const gold=Math.round(en.level*8*(battle.isBoss?3:1)*(battle.goldMult||1));
-  partyMons().forEach((m,i)=>{if(m.hp>0)gainExp(m,Math.round(exp*(i===0?1:.55)))});
+
+  partyMons().forEach((m,i)=>{
+    if(m.hp>0){
+      const before=m.level;
+      gainExp(m,Math.round(exp*(i===0?1:.75)));
+
+      if(m.level>before){
+        addLog(`${MONSTERS[m.species].name}がLv.${m.level}に上がった！`);
+      }
+    }
+  });
+
   game.gold+=gold;
   if(battle.isBoss){
     const expected=z.unlock;
@@ -891,7 +1248,7 @@ function importSave(){
 }
 
 window.startGame=startGame;window.nav=nav;window.rest=rest;window.buyPotion=buyPotion;window.buyBait=buyBait;
-window.explore=explore;window.trainExplore=trainExplore;window.challengeBoss=challengeBoss;window.playerAction=playerAction;window.playerSkill=playerSkill;
+window.explore=explore;window.trainExplore=trainExplore;window.startAutoTraining=startAutoTraining;window.challengeBoss=challengeBoss;window.playerAction=playerAction;window.playerSkill=playerSkill;
 window.openSwitch=openSwitch;window.switchAction=switchAction;window.forceSwitch=forceSwitch;window.usePotion=usePotion;
 window.scout=scout;window.flee=flee;window.toRanch=toRanch;window.toParty=toParty;window.moveParty=moveParty;
 window.breedSelect=breedSelect;window.prepareBreed=prepareBreed;window.allocBreed=allocBreed;window.confirmBreed=confirmBreed;window.clearBreedResult=clearBreedResult;
